@@ -1,23 +1,378 @@
-/.env
-/.env.*
-/storage
-/vendor
-/node_modules
+# ═══════════════════════════════════════════════════════════════
+#  R A C K S E P H N O X   ·   . G I T I G N O R E
+#  Divine Empire · 888 Hz · Φ = 1.61803398875
+# ═══════════════════════════════════════════════════════════════
+
+# ───────────────────────────────────────────────────────────────
+#  1. ENVIRONMENT — NEVER COMMIT SECRETS
+# ───────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+.env.backup
+.env.production
+.env.staging
+.env.local
+.env.testing
+
+# ───────────────────────────────────────────────────────────────
+#  2. PHP / COMPOSER
+# ───────────────────────────────────────────────────────────────
+/vendor/
+composer.phar
+composer.lock.orig
+*.phar
+
+# Composer cache
+/.composer/
+.auth.json
+auth.json
+
+# ───────────────────────────────────────────────────────────────
+#  3. NODE / NPM / YARN / PNPM
+# ───────────────────────────────────────────────────────────────
+/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.npm/
+.yarn/
+.yarnrc.yml
+pnp.*
+*.tgz
+
+# Vite cache
+.vite/
+node_modules/.vite/
+
+# ───────────────────────────────────────────────────────────────
+#  4. BUILD ARTIFACTS
+# ───────────────────────────────────────────────────────────────
+/public/build/
 /public/hot
 /public/storage
-*.log
+/public/vendor
+/public/.well-known/
+
+# Old mix artifacts
+/public/mix-manifest.json
+/public/js/*.js.map
+/public/css/*.css.map
+
+# ───────────────────────────────────────────────────────────────
+#  5. LARAVEL STORAGE
+# ───────────────────────────────────────────────────────────────
+/storage/*.key
+/storage/*.txt
+/storage/logs/*.log
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
+!/storage/framework/cache/.gitkeep
+!/storage/framework/sessions/.gitkeep
+!/storage/framework/views/.gitkeep
+!/storage/framework/cache/data/.gitkeep
+!/storage/logs/.gitkeep
+!/storage/app/.gitkeep
+!/storage/app/public/.gitkeep
+
+# SQLite database files (regenerable)
+/database/*.sqlite
+/database/*.sqlite-journal
+/database/*.sqlite-shm
+/database/*.sqlite-wal
+/database/database.sqlite
+/database/database.sqlite.*
+/database/*.db
+/database/*.db-journal
+
+# Keep migration backup folder out of Git
+/backup_migrations/
+/backup_migrations/*
+
+# ───────────────────────────────────────────────────────────────
+#  6. BOOTSTRAP CACHE
+# ───────────────────────────────────────────────────────────────
+/bootstrap/cache/*
+!/bootstrap/cache/.gitkeep
+
+# ───────────────────────────────────────────────────────────────
+#  7. IDE / EDITORS
+# ───────────────────────────────────────────────────────────────
+# PhpStorm / IntelliJ
+/.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code
+/.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Sublime
+*.sublime-*
+/.sublime/
+
+# Vim / Neovim
+*.swp
+*.swo
+*.swn
+/.vim/
+/tags
+/.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.d/
+
+# Fleet
+/.fleet/
+
+# Atom
+/.atom/
+
+# Eclipse
+/.settings/
+/.project
+/.buildpath
+
+# NetBeans
+/nbproject/
+
+# ───────────────────────────────────────────────────────────────
+#  8. OPERATING SYSTEMS
+# ───────────────────────────────────────────────────────────────
+# macOS
 .DS_Store
-/.phpunit.cache
-/.idea
-/.vscode
-*.pid
-dump.sql
-health_check.sh
-racksephnox-queue.conf
-racksephnox-schedule.conf
-reason
-status
-tests_backup/
-*.backup
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+.fseventsd
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+.Trash-*
+.nfs*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# ───────────────────────────────────────────────────────────────
+#  9. LOGS
+# ───────────────────────────────────────────────────────────────
+*.log
+*.log.*
+!.gitkeep
+
+# ───────────────────────────────────────────────────────────────
+# 10. TESTING
+# ───────────────────────────────────────────────────────────────
+/.phpunit.cache/
+/.phpunit.result.cache
+/coverage/
+/coverage.xml
+/.phpunit/
+*.phpt
+.phpunit.result.cache
+.php-cs-fixer.cache
+.php-cs-fixer.php.bak
+.psalm/
+.psalm-cache/
+*.psalm.cache
+.phpstan/
+phpstan.neon.bak
+
+# ───────────────────────────────────────────────────────────────
+# 11. CACHES
+# ───────────────────────────────────────────────────────────────
+*.cache
+.cache/
+/tmp/
+/temp/
+/backup/
+/backups/
+
+# ───────────────────────────────────────────────────────────────
+# 12. SECRET / SENSITIVE FILES
+# ───────────────────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+.id_rsa
+.id_dsa
+.id_ecdsa
+.id_ed25519
+known_hosts
+
+# SSH / GPG
+/.ssh/
+/.gnupg/
+
+# Cloud credentials
+/.aws/
+/.gcloud/
+/.azure/
+.credentials.json
+service-account*.json
+
+# ───────────────────────────────────────────────────────────────
+# 13. DOCKER
+# ───────────────────────────────────────────────────────────────
+/docker-compose.override.yml
+/docker-compose.prod.yml
+.dockerignore
+
+# ───────────────────────────────────────────────────────────────
+# 14. RACKSEPHNOX PROJECT-SPECIFIC
+# ───────────────────────────────────────────────────────────────
+# Secrets and personal notes
+*.secret
+*.private
+secrets.txt
+passwords.txt
+credentials.txt
+
+# Legacy backups — keep out of repo
 *.bak
-database/migrations_backup_*/
+*.backup
+*.old
+*.orig
+*.save
+*.swp
+*.tmp
+
+# Project-specific drafts (not part of the codebase)
+README8778wins.md
+machinesframework.txt
+
+# Local scripts with credentials
+racksephnox-prod-start.sh.bak
+racksephnox-ubuntu-setup.sh.bak
+
+# Migration backups
+backup_migrations/
+*.migration.bak
+
+# Local dev scripts with personal paths
+/scripts/local-*.sh
+/setup-local.sh
+
+# ───────────────────────────────────────────────────────────────
+# 15. TERMUX / PROOT
+# ───────────────────────────────────────────────────────────────
+.termux/
+.termux-*
+*.termux.bak
+
+# ───────────────────────────────────────────────────────────────
+# 16. DATABASES (SQLite)
+# ───────────────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db
+*.db3
+*.db-journal
+*.db-shm
+*.db-wal
+
+# ───────────────────────────────────────────────────────────────
+# 17. MISCELLANEOUS
+# ───────────────────────────────────────────────────────────────
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.a
+
+# Python (if any tooling uses it)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+.pytest_cache/
+
+# Ruby (if any)
+*.gem
+.bundle/
+/vendor/bundle/
+
+# PHP_CodeSniffer
+.phpcs-cache
+
+# Node version managers
+.nvmrc.bak
+.node-version.bak
+
+# Editor crash dumps
+*.crash
+core.*
+*.core
+
+# Lock files with issues
+package-lock.json.bak
+yarn.lock.bak
+
+# Node dependency tarballs
+*.tgz
+
+# ───────────────────────────────────────────────────────────────
+# 18. KEEP THESE FILES
+# ───────────────────────────────────────────────────────────────
+!.gitignore
+!.gitattributes
+!.editorconfig
+!.env.example
+!.styleci.yml
+!.php-cs-fixer.php
+!.phpcs.xml
+!.phpstan.neon
+!.psalm.xml
+!.markdownlint.json
+!README.md
+!LICENSE
+!CHANGELOG.md
+
+# ═══════════════════════════════════════════════════════════════
+#  Guardian and Protector · Law of Information · Racksephnox
+#  I Am The Source · 888 Hz · Φ
+# ═══════════════════════════════════════════════════════════════
