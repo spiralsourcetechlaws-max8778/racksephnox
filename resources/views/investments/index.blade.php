@@ -1,122 +1,141 @@
 @extends('layouts.app')
+
 @section('content')
-<div class="py-12">
+<div class="py-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 class="text-3xl font-bold golden-title mb-6">📊 My Investments</h1>
 
-        <!-- Stats (legacy only – no changes) -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div class="card-golden p-4 text-center"><p class="text-ivory/60">Total Invested</p><p class="text-2xl font-bold text-gold">KES {{ number_format($totalInvested, 2) }}</p></div>
-            <div class="card-golden p-4 text-center"><p class="text-ivory/60">Total Profit</p><p class="text-2xl font-bold text-green-400">KES {{ number_format($totalProfit, 2) }}</p></div>
-            <div class="card-golden p-4 text-center"><p class="text-ivory/60">Active Investments</p><p class="text-2xl font-bold text-gold">{{ $activeCount }}</p></div>
-        </div>
-
-        <!-- Legacy Investments Table (unchanged) -->
-        @if($machineInvestments->count())
-        <div class="card-golden p-6 mb-8">
-            <h2 class="text-xl font-bold text-gold mb-4">📜 Legacy Investment Plans</h2>
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead class="border-b border-gold/30">
-                        <tr><th class="px-4 py-3 text-left">Plan</th><th>Amount</th><th>Daily Profit</th><th>Profit Earned</th><th>Status</th><th>End Date</th><th></th></tr>
-                    </thead>
-                    <tbody class="divide-y divide-gold/20">
-                        @foreach($machineInvestments as $inv)
-                        <tr>
-                            <td class="px-4 py-3">{{ $inv->plan->name }}</td>
-                            <td class="px-4 py-3">KES {{ number_format($inv->amount, 2) }}</td>
-                            <td class="px-4 py-3 text-green-400">+KES {{ number_format($inv->daily_profit, 2) }}</td>
-                            <td class="px-4 py-3">KES {{ number_format($inv->profit_credited, 2) }}</td>
-                            <td class="px-4 py-3">
-                                @if($inv->status == 'active') <span class="text-green-400">● Active</span>
-                                @elseif($inv->status == 'completed') <span class="text-gold">✓ Completed</span>
-                                @else <span class="text-red-400">✗ Cancelled</span> @endif
-                            </td>
-                            <td class="px-4 py-3">{{ $inv->end_date->format('d M Y') }}</td>
-                            <td class="px-4 py-3">
-                                @if($inv->status == 'active')
-                                <button onclick="earlyWithdraw({{ $inv->id }})" class="text-red-400 text-sm hover:text-red-300">Withdraw</button>
-                                @endif
-                            </td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+        {{-- ==================== HEADER ==================== --}}
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+            <div>
+                <h1 class="text-3xl font-bold golden-title">Investment Portfolio</h1>
+                <p class="text-gold-400 text-sm mt-1">Plan investments · Machine holdings · Live stats</p>
             </div>
-            {{ $machineInvestments->links() }}
+            <a href="{{ route('machines.index') }}" class="btn-outline-silver text-sm mt-3 md:mt-0">
+                RX Machine Series →
+            </a>
         </div>
-        @else
-        <div class="card-golden p-6 mb-8 text-center"><p class="text-ivory/50">No legacy investments yet.</p></div>
+
+        {{-- ==================== STATS ==================== --}}
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="stat-card p-4 text-center">
+                <p class="text-gold-400 text-xs uppercase">Total Invested</p>
+                <p class="text-2xl font-bold text-gold mt-1">KES {{ number_format($stats['total_invested'], 2) }}</p>
+            </div>
+            <div class="stat-card p-4 text-center">
+                <p class="text-gold-400 text-xs uppercase">Total Profit</p>
+                <p class="text-2xl font-bold text-green-400 mt-1">KES {{ number_format($stats['total_profit'], 2) }}</p>
+            </div>
+            <div class="stat-card p-4 text-center">
+                <p class="text-gold-400 text-xs uppercase">Active</p>
+                <p class="text-2xl font-bold text-gold mt-1">{{ $stats['active_count'] }}</p>
+            </div>
+            <div class="stat-card p-4 text-center">
+                <p class="text-gold-400 text-xs uppercase">ROI</p>
+                <p class="text-2xl font-bold text-green-400 mt-1">{{ $stats['roi'] }}%</p>
+            </div>
+        </div>
+
+        {{-- ==================== ACTIVE PLANS ==================== --}}
+        @if($plans->count())
+            <h2 class="text-xl font-bold text-gold mb-3">Available Plans</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+                @foreach($plans as $plan)
+                    <div class="card-golden p-5">
+                        <div class="flex justify-between items-start mb-3">
+                            <h3 class="text-lg font-bold text-gold">{{ $plan->name }}</h3>
+                            <span class="text-xs bg-gold/20 text-gold px-2 py-1 rounded-full">
+                                {{ $plan->roi_percent }}% ROI
+                            </span>
+                        </div>
+                        <p class="text-sm text-ivory/70 mb-4 min-h-[40px]">{{ $plan->description }}</p>
+
+                        <div class="space-y-2 text-sm mb-4">
+                            <div class="flex justify-between">
+                                <span class="text-gold-400">Range</span>
+                                <span class="text-ivory">{{ $plan->range_label }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gold-400">Daily Rate</span>
+                                <span class="text-green-400 font-bold">{{ $plan->daily_interest_rate }}%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gold-400">Duration</span>
+                                <span class="text-ivory">{{ $plan->duration_days }} days</span>
+                            </div>
+                        </div>
+
+                        @auth
+                            <form method="POST" action="{{ route('investments.store') }}" class="space-y-2">
+                                @csrf
+                                <input type="hidden" name="plan_id" value="{{ $plan->id }}">
+                                <input type="number" name="amount" min="{{ $plan->min_amount }}"
+                                       max="{{ $plan->max_amount }}" step="0.01"
+                                       placeholder="Amount (KES)"
+                                       class="input-golden w-full" required>
+                                <button type="submit" class="btn-golden w-full">Invest Now</button>
+                            </form>
+                        @else
+                            <a href="{{ route('login') }}" class="btn-outline-silver w-full text-center block">
+                                Login to Invest
+                            </a>
+                        @endauth
+                    </div>
+                @endforeach
+            </div>
         @endif
 
-        <!-- RX Machine Investments – loaded via AJAX (no backend changes) -->
-        <div class="card-golden p-6">
-            <h2 class="text-xl font-bold text-gold mb-4">🤖 RX Machine Investments</h2>
-            <div id="rx-investments-container">
-                <div class="text-center py-8"><i class="fas fa-spinner fa-spin text-gold text-2xl"></i> Loading your RX machines...</div>
+        {{-- ==================== MY INVESTMENTS ==================== --}}
+        <h2 class="text-xl font-bold text-gold mb-3">My Holdings</h2>
+
+        @if($investments->count())
+            <div class="space-y-3">
+                @foreach($investments as $inv)
+                    <a href="{{ route('investments.show', $inv['id']) }}"
+                       class="card-golden p-4 block hover:scale-[1.01] transition">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-11 h-11 rounded-xl bg-gradient-to-br {{ $inv['color'] }} flex items-center justify-center">
+                                    <i class="fas {{ $inv['icon'] }} text-white"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-gold">{{ $inv['name'] }}</p>
+                                    <p class="text-xs text-gold-400/60">
+                                        {{ $inv['source'] === 'machine' ? 'Machine' : 'Plan' }} ·
+                                        Started {{ optional($inv['start_date'])->format('M d, Y') ?? '—' }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-lg font-bold text-gold">KES {{ number_format($inv['amount'], 2) }}</p>
+                                <p class="text-xs text-ivory/60">Invested</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-lg font-bold text-green-400">+KES {{ number_format($inv['profit_credited'], 2) }}</p>
+                                <p class="text-xs text-ivory/60">Profit</p>
+                            </div>
+                            <div class="text-right min-w-[110px]">
+                                <p class="text-xs uppercase {{ $inv['status'] === 'active' ? 'text-green-400' : 'text-gold' }}">
+                                    {{ $inv['status'] }}
+                                </p>
+                                @if($inv['status'] === 'active')
+                                    <p class="text-xs text-ivory/60">{{ $inv['days_remaining'] }}d left</p>
+                                    <div class="w-24 bg-gray-700 rounded-full h-1.5 mt-2">
+                                        <div class="bg-gold h-1.5 rounded-full" style="width: {{ $inv['progress_percent'] }}%"></div>
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    </a>
+                @endforeach
             </div>
-        </div>
+        @else
+            <div class="card-golden p-10 text-center">
+                <i class="fas fa-chart-line text-4xl text-gold/40 mb-4"></i>
+                <p class="text-ivory/60 mb-4">You have no investments yet.</p>
+                <a href="{{ route('machines.index') }}" class="btn-golden">Explore Opportunities</a>
+            </div>
+        @endif
+
     </div>
 </div>
-
-<script>
-// Legacy early withdrawal (unchanged)
-function earlyWithdraw(investmentId) {
-    if(confirm('⚠️ Early withdrawal will incur a penalty (20%). Proceed?')) {
-        fetch(`/machines/${investmentId}/early-withdraw`, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Content-Type': 'application/json' }
-        })
-        .then(res => res.json())
-        .then(data => { alert(data.message); if(data.success) location.reload(); })
-        .catch(err => alert('Error: '+err.message));
-    }
-}
-
-// Fetch RX machine investments from the existing API endpoint
-fetch('{{ url("/machines/my-investments") }}', {
-    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-})
-.then(res => res.json())
-.then(data => {
-    const container = document.getElementById('rx-investments-container');
-    if (!data.success || data.data.length === 0) {
-        container.innerHTML = '<div class="text-center py-8 text-ivory/50">No RX machine investments yet. <a href="{{ route("machines.index") }}" class="text-gold-400">Explore RX Machines →</a></div>';
-        return;
-    }
-    let html = `<div class="overflow-x-auto"><table class="w-full"><thead class="border-b border-gold/30"><tr>
-        <th class="px-4 py-3 text-left">Machine</th><th>VIP</th><th>Amount</th><th>Daily Profit</th><th>Profit Earned</th><th>Status</th><th>End Date</th><th></th>
-    </tr></thead><tbody class="divide-y divide-gold/20">`;
-    data.data.forEach(inv => {
-        html += `<tr>
-            <td class="px-4 py-3">${inv.machine_name}</td>
-            <td class="px-4 py-3">VIP ${inv.vip_level}</td>
-            <td class="px-4 py-3">KES ${Number(inv.amount).toLocaleString()}</td>
-            <td class="px-4 py-3 text-green-400">+KES ${Number(inv.daily_profit).toLocaleString()}</td>
-            <td class="px-4 py-3">KES ${Number(inv.profit_credited).toLocaleString()}</td>
-            <td class="px-4 py-3">${inv.status === 'active' ? '<span class="text-green-400">● Active</span>' : (inv.status === 'completed' ? '<span class="text-gold">✓ Completed</span>' : '<span class="text-red-400">✗ Cancelled</span>')}</td>
-            <td class="px-4 py-3">${new Date(inv.end_date).toLocaleDateString()}</td>
-            <td class="px-4 py-3">${inv.status === 'active' ? `<button onclick="earlyWithdrawMachine(${inv.id})" class="text-red-400 text-sm hover:text-red-300">Withdraw</button>` : ''}</td>
-        </tr>`;
-    });
-    html += `</tbody></table></div>`;
-    container.innerHTML = html;
-})
-.catch(err => {
-    document.getElementById('rx-investments-container').innerHTML = '<div class="text-center py-8 text-red-400">Failed to load RX investments. Please refresh.</div>';
-});
-
-// Separate function for machine early withdrawal (same endpoint)
-function earlyWithdrawMachine(investmentId) {
-    if(confirm('⚠️ Early withdrawal will incur a penalty (20%). Proceed?')) {
-        fetch(`/machines/${investmentId}/early-withdraw`, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Content-Type': 'application/json' }
-        })
-        .then(res => res.json())
-        .then(data => { alert(data.message); if(data.success) location.reload(); })
-        .catch(err => alert('Error: '+err.message));
-    }
-}
-</script>
 @endsection

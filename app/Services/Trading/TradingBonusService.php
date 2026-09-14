@@ -2,57 +2,64 @@
 
 namespace App\Services\Trading;
 
-use App\Models\TradeOrder;
+use App\Models\TradingAccount;
+use App\Models\TradingBonusTracker;
+use App\Models\Transaction;
 use App\Models\User;
-use App\Notifications\BonusNotification;
 use Illuminate\Support\Facades\DB;
 
 class TradingBonusService
 {
-    /**
-     * Check if user qualifies for trading streak bonus
-     * and award if eligible.
-     */
-    public function checkAndAwardBonus(User $user)
+    public function creditSignupBonus(User $user, float $amount = 100.0): ?TradingBonusTracker
     {
-        // Count completed trades in last 24 hours
-        $tradesCount = TradeOrder::where('user_id', $user->id)
-            ->where('status', 'completed')
-            ->where('created_at', '>=', now()->subHours(24))
-            ->count();
-
-        if ($tradesCount >= 8) {
-            // Check if bonus already awarded in this 24h window
-            $bonusAlreadyAwarded = TradeOrder::where('user_id', $user->id)
-                ->where('order_type', 'bonus')
-                ->where('created_at', '>=', now()->subHours(24))
-                ->exists();
-
-            if (!$bonusAlreadyAwarded) {
-                $tradingBalance = $user->tradingAccount->balance ?? 0;
-                $bonusAmount = $tradingBalance * 0.08; // 8%
-
-                if ($bonusAmount > 0) {
-                    DB::transaction(function () use ($user, $bonusAmount) {
-                        // Credit the bonus to trading account
-                        $user->tradingAccount->increment('balance', $bonusAmount);
-                        $user->tradingAccount->credit($bonusAmount, 'Trading streak bonus (8 trades in 24h)');
-
-                        // Record a dummy "bonus" order to prevent duplicate awards
-                        TradeOrder::create([
-                            'user_id' => $user->id,
-                            'side' => 'bonus',
-                            'order_type' => 'bonus',
-                            'amount_btc' => 0,
-                            'filled_amount' => 0,
-                            'status' => 'completed',
-                        ]);
-
-                        // Send notification
-                        $user->notify(new BonusNotification($bonusAmount, 'trading_bonus'));
-                    });
-                }
-            }
+        if (TradingBonusTracker::where('user_id', $user->id)->where('bonus_type', 'signup')->exists()) {
+            return null;
         }
+
+        return DB::transaction(function () use ($user, $amount) {
+            $tracker = TradingBonusTracker::create([
+                'user_id'         => $user->id,
+                'bonus_type'      => 'signup',
+                'bonus_amount'    => $amount,
+                'required_volume' => $amount * 10,
+                'achieved_volume' => 0,
+                'is_claimed'      => false,
+                'expires_at'      => now()->addDays(30),
+            ]);
+
+            $account = TradingAccount::firstOrCreate(
+                ['user_id' => $user->id],
+                ['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0]
+            );
+            $account->balance += $amount;
+            $account->save();
+
+            Transaction::create([
+                'user_id'       => $user->id,
+                'wallet_id'     => optional($user->wallet)->id ?? 0,
+                'type'          => 'trading_bonus',
+                'amount'        => $amount,
+                'balance_after' => $account->balance,
+                'description'   => 'Welcome trading bonus',
+                'reference'     => 'BONUS-SIGNUP-' . $user->id,
+                'status'        => 'completed',
+            ]);
+
+            return $tracker;
+        });
+    }
+
+    public function recordVolume(User $user, float $kesVolume): void
+    {
+        TradingBonusTracker::where('user_id', $user->id)
+            ->where('is_claimed', false)
+            ->get()
+            ->each(function (TradingBonusTracker $t) use ($kesVolume) {
+                $t->achieved_volume += $kesVolume;
+                if ($t->achieved_volume >= $t->required_volume) {
+                    $t->is_claimed = true;
+                }
+                $t->save();
+            });
     }
 }

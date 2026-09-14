@@ -7,31 +7,30 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
-    /**
-     * Define the application's command schedule.
-     */
     protected function schedule(Schedule $schedule): void
     {
-        // Tournament prize distribution (daily at 00:30)
-        $schedule->command('lottery:distribute-prizes')->dailyAt('00:30');
+        // ============================================================
+        // LOTTERY SCHEDULED JOBS
+        // ============================================================
+        $schedule->job(new \App\Jobs\Lottery\UpdateTournamentRankings)->everyFiveMinutes();
+        $schedule->job(new \App\Jobs\Lottery\DistributeTournamentPrizes)->everyTenMinutes();
+        $schedule->job(new \App\Jobs\Lottery\CleanupLotterySpins)->hourly();
+        $schedule->job(new \App\Jobs\Lottery\UpdateLeaderboardCache)->everyMinute();
+        $schedule->job(new \App\Jobs\Lottery\WarmupLotteryCache)->everyTenMinutes();
+        $schedule->job(new \App\Jobs\Lottery\ProcessJackpotContributions)->everyMinute();
+        $schedule->job(new \App\Jobs\Lottery\CheckJackpotMustDrop)->everyFiveMinutes();
+        $schedule->job(new \App\Jobs\Lottery\ResetDailyMissions)->dailyAt('00:00');
+        $schedule->job(new \App\Jobs\Lottery\AwardStreakBonuses)->dailyAt('00:05');
 
-        // Update tournament rankings (every hour)
-        $schedule->command('lottery:update-rankings')->hourly();
-
-        // Clean up old lottery spins (keep last 30 days) – run daily
-        $schedule->command('lottery:cleanup-spins')->dailyAt('02:00');
-
-        // Cache warmup for lottery symbols (every 6 hours)
-        $schedule->command('lottery:warmup-cache')->everySixHours();
+        // ============================================================
+        // OTHER JOBS (existing)
+        // ============================================================
+        $schedule->command('cache:prune-stale-tags')->hourly();
     }
 
-    /**
-     * Register the commands for the application.
-     */
     protected function commands(): void
     {
-        $this->load(__DIR__.'/Commands');
-
+        $this->load(__DIR__ . '/Commands');
         require base_path('routes/console.php');
     }
 }

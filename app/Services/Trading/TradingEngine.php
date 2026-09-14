@@ -1,353 +1,265 @@
 <?php
+
 namespace App\Services\Trading;
 
 use App\Models\TradeOrder;
+use App\Models\TradingAccount;
 use App\Models\TradingPair;
-use App\Models\TradingCandle;
+use App\Models\BtcPriceHistory;
+use App\Models\Transaction;
 use App\Models\User;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 class TradingEngine
 {
-    protected $orderBook = [];
-    protected $pair;
+    protected TradingPair $pair;
 
-    public function __construct(?TradingPair $pair = null)
+    public function __construct(TradingPair $pair)
     {
-        // Check if required tables exist before any database operations
-        if (!$this->tablesExist()) {
-            // Tables don't exist yet (during migrations), create a dummy instance
-            $this->pair = $pair ?? new TradingPair();
-            $this->orderBook = ['bids' => collect(), 'asks' => collect()];
-            return;
-        }
-
-        if (!$pair) {
-            $pair = TradingPair::firstOrCreate(
-                ['symbol' => 'BTCUSDT'],
-                ['base_currency' => 'BTC', 'quote_currency' => 'USDT', 'is_active' => true]
-            );
-        }
         $this->pair = $pair;
-        $this->loadOrderBook();
     }
 
-    protected function tablesExist(): bool
+    /* ============================================================
+     | MARKET DATA
+     ============================================================ */
+
+    public function getMarketPrice(): float
     {
-        return Schema::hasTable('trade_orders') && Schema::hasTable('trading_pairs');
-    }
-
-    protected function loadOrderBook()
-    {
-        if (!$this->tablesExist()) {
-            $this->orderBook = ['bids' => collect(), 'asks' => collect()];
-            return;
-        }
-
-        $this->orderBook = Cache::remember("orderbook_{$this->pair->id}", 5, function () {
-            $buyOrders = TradeOrder::where('pair_id', $this->pair->id)
-                ->where('side', 'buy')->whereIn('status', ['pending', 'partial'])
-                ->orderBy('limit_price', 'desc')->get();
-            $sellOrders = TradeOrder::where('pair_id', $this->pair->id)
-                ->where('side', 'sell')->whereIn('status', ['pending', 'partial'])
-                ->orderBy('limit_price', 'asc')->get();
-            return ['bids' => $buyOrders, 'asks' => $sellOrders];
-        });
-    }
-
-    public function getMarketPrice()
-    {
-        if (!$this->tablesExist()) {
-            return 8500000; // Default price when tables don't exist
-        }
-
-        return Cache::remember("market_price_{$this->pair->symbol}", 10, function () {
-            $lastTrade = TradeOrder::where('pair_id', $this->pair->id)
-                ->where('status', 'completed')->latest()->first();
-            return $lastTrade ? $lastTrade->price_per_btc : 8500000;
-        });
-    }
-
-    public function placeOrder(User $user, $side, $orderType, $amount, $price = null, $stopPrice = null, $tp = null, $sl = null, $tif = 'GTC')
-    {
-        if (!$this->tablesExist()) {
-            throw new \Exception('Trading system is initializing. Please try again in a moment.');
-        }
-
-        $marketPrice = $this->getMarketPrice();
-        $totalKes = ($orderType === 'market') ? $amount * $marketPrice : $amount * $price;
-
-        if ($side === 'buy' && $user->tradingAccount->balance < $totalKes) {
-            throw new \Exception('Insufficient trading balance');
-        }
-        if ($side === 'sell') {
-            $btcBalance = $this->getBtcBalance($user->id);
-            if ($btcBalance < $amount) throw new \Exception('Insufficient BTC balance');
-        }
-
-        $order = TradeOrder::create([
-            'user_id' => $user->id,
-            'pair_id' => $this->pair->id,
-            'side' => $side,
-            'order_type' => $orderType,
-            'amount_btc' => $amount,
-            'filled_amount' => 0,
-            'limit_price' => $price,
-            'stop_price' => $stopPrice,
-            'take_profit_price' => $tp,
-            'stop_loss_price' => $sl,
-            'status' => 'pending',
-            'time_in_force' => $tif,
-            'expires_at' => ($tif !== 'GTC') ? now()->addMinutes(5) : null,
-        ]);
-
-        if ($orderType === 'market') {
-            $this->executeMarketOrder($order);
-        } else {
-            $this->matchOrder($order);
-        }
-        return $order;
-    }
-
-    public function executeMarketOrder(TradeOrder $order)
-    {
-        if (!$this->tablesExist()) return;
-
-        $price = $this->getMarketPrice();
-        $totalKes = $order->amount_btc * $price;
-        DB::transaction(function () use ($order, $totalKes, $price) {
-            if ($order->side === 'buy') {
-                $order->user->tradingAccount->decrement('balance', $totalKes);
-            } else {
-                $order->user->tradingAccount->increment('balance', $totalKes);
+        return (float) Cache::remember("market_price_{$this->pair->symbol}", 30, function () {
+            $latest = BtcPriceHistory::latest('recorded_at')->first();
+            if ($latest && $latest->price_kes) {
+                return (float) $latest->price_kes;
             }
-            $order->update([
-                'filled_amount' => $order->amount_btc,
-                'filled_kes' => $totalKes,
-                'price_per_btc' => $price,
-                'status' => 'completed'
-            ]);
-            $this->checkStopOrders($order);
-            $this->trackAndAwardBonus($order->user);
-            $this->executeCopyTrades($order);
+            $close = $this->pair->candles()
+                ->orderBy('open_time', 'desc')
+                ->value('close');
+            return (float) ($close ?? 5_000_000);
         });
     }
 
-    public function matchOrder(TradeOrder $order)
+    public function getOrderBook(int $depth = 20): array
     {
-        if (!$this->tablesExist()) return;
-
-        $opposite = $order->side === 'buy' ? 'sell' : 'buy';
-        $matchingOrders = TradeOrder::where('pair_id', $this->pair->id)
-            ->where('side', $opposite)
-            ->where('order_type', 'limit')
+        $asks = TradeOrder::where('pair_id', $this->pair->id)
+            ->where('side', 'sell')
             ->whereIn('status', ['pending', 'partial'])
-            ->where('user_id', '!=', $order->user_id)
-            ->when($order->side === 'buy', fn($q) => $q->where('limit_price', '<=', $order->limit_price))
-            ->when($order->side === 'sell', fn($q) => $q->where('limit_price', '>=', $order->limit_price))
-            ->orderBy('limit_price', $order->side === 'buy' ? 'asc' : 'desc')
-            ->get();
-
-        $remaining = $order->amount_btc - $order->filled_amount;
-        foreach ($matchingOrders as $match) {
-            if ($remaining <= 0) break;
-            $fill = min($remaining, $match->amount_btc - $match->filled_amount);
-            $fillPrice = $match->limit_price;
-            $this->executeTrade($order, $match, $fill, $fillPrice);
-            $remaining -= $fill;
-        }
-        $order->status = ($remaining <= 0) ? 'completed' : ($order->filled_amount > 0 ? 'partial' : 'pending');
-        $order->save();
-        $this->checkStopOrders($order);
-    }
-
-    protected function executeTrade(TradeOrder $buyOrder, TradeOrder $sellOrder, $amount, $price)
-    {
-        if (!$this->tablesExist()) return;
-
-        $totalKes = $amount * $price;
-        DB::transaction(function () use ($buyOrder, $sellOrder, $amount, $totalKes, $price) {
-            $buyOrder->increment('filled_amount', $amount);
-            $buyOrder->increment('filled_kes', $totalKes);
-            $buyOrder->price_per_btc = $price;
-            if ($buyOrder->filled_amount >= $buyOrder->amount_btc) $buyOrder->status = 'completed';
-            elseif ($buyOrder->filled_amount > 0) $buyOrder->status = 'partial';
-            $buyOrder->save();
-
-            $sellOrder->increment('filled_amount', $amount);
-            $sellOrder->increment('filled_kes', $totalKes);
-            $sellOrder->price_per_btc = $price;
-            if ($sellOrder->filled_amount >= $sellOrder->amount_btc) $sellOrder->status = 'completed';
-            elseif ($sellOrder->filled_amount > 0) $sellOrder->status = 'partial';
-            $sellOrder->save();
-
-            if ($buyOrder->user_id !== $sellOrder->user_id) {
-                $buyOrder->user->tradingAccount->decrement('balance', $totalKes);
-                $sellOrder->user->tradingAccount->increment('balance', $totalKes);
-            }
-
-            $this->checkStopOrders($buyOrder);
-            $this->checkStopOrders($sellOrder);
-            $this->trackAndAwardBonus($buyOrder->user);
-            $this->trackAndAwardBonus($sellOrder->user);
-            $this->executeCopyTrades($buyOrder);
-            $this->executeCopyTrades($sellOrder);
-        });
-    }
-
-    protected function checkStopOrders(TradeOrder $triggerOrder)
-    {
-        if (!$this->tablesExist()) return;
-
-        $price = $triggerOrder->price_per_btc;
-        $stopOrders = TradeOrder::where('pair_id', $this->pair->id)
-            ->where('status', 'pending')
-            ->where('order_type', 'stop')
-            ->where(function ($q) use ($price) {
-                $q->where('stop_price', '<=', $price)->orWhere('stop_price', '>=', $price);
-            })->get();
-        foreach ($stopOrders as $order) {
-            $order->order_type = 'market';
-            $order->save();
-            $this->executeMarketOrder($order);
-        }
-    }
-
-    public function getOrderBook()
-    {
-        if (!$this->tablesExist()) {
-            return ['bids' => collect(), 'asks' => collect()];
-        }
+            ->orderBy('limit_price', 'asc')
+            ->limit($depth)
+            ->get()
+            ->map(fn ($o) => [
+                'price'  => (float) ($o->limit_price ?? 0),
+                'amount' => (float) ($o->amount_btc - ($o->filled_amount ?? 0)),
+            ])
+            ->values()
+            ->toArray();
 
         $bids = TradeOrder::where('pair_id', $this->pair->id)
             ->where('side', 'buy')
             ->whereIn('status', ['pending', 'partial'])
+            ->orderBy('limit_price', 'desc')
+            ->limit($depth)
             ->get()
-            ->groupBy('limit_price')
-            ->map(fn($orders) => $orders->sum('amount_btc'))
-            ->sortDesc()
-            ->take(10);
-        $asks = TradeOrder::where('pair_id', $this->pair->id)
-            ->where('side', 'sell')
+            ->map(fn ($o) => [
+                'price'  => (float) ($o->limit_price ?? 0),
+                'amount' => (float) ($o->amount_btc - ($o->filled_amount ?? 0)),
+            ])
+            ->values()
+            ->toArray();
+
+        return ['asks' => $asks, 'bids' => $bids];
+    }
+
+    /* ============================================================
+     | ORDER PLACEMENT
+     ============================================================ */
+
+    public function placeOrder(
+        User $user,
+        string $side,
+        string $orderType,
+        float $amountBtc,
+        ?float $limitPrice = null,
+        ?float $stopPrice = null,
+        ?float $takeProfit = null,
+        ?float $stopLoss = null,
+        string $timeInForce = 'GTC'
+    ): TradeOrder {
+        if (!in_array($side, ['buy', 'sell'], true)) {
+            throw new RuntimeException('Invalid order side.');
+        }
+        if ($amountBtc <= 0) {
+            throw new RuntimeException('Amount must be greater than zero.');
+        }
+        if ($amountBtc < $this->pair->min_trade_amount) {
+            throw new RuntimeException("Minimum trade amount is {$this->pair->min_trade_amount} BTC.");
+        }
+        if ($amountBtc > $this->pair->max_trade_amount) {
+            throw new RuntimeException("Maximum trade amount is {$this->pair->max_trade_amount} BTC.");
+        }
+
+        $marketPrice = $this->getMarketPrice();
+        $executionPrice = $orderType === 'market' ? $marketPrice : (float) $limitPrice;
+        $kesTotal = round($executionPrice * $amountBtc, 2);
+
+        return DB::transaction(function () use ($user, $side, $orderType, $amountBtc, $limitPrice, $stopPrice, $takeProfit, $stopLoss, $timeInForce, $kesTotal, $marketPrice) {
+
+            $account = TradingAccount::lockForUpdate()->firstOrCreate(
+                ['user_id' => $user->id],
+                ['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0]
+            );
+
+            if ($side === 'buy') {
+                if ($account->balance < $kesTotal) {
+                    throw new RuntimeException('Insufficient KES balance.');
+                }
+                $account->balance -= $kesTotal;
+                $account->locked_balance += $kesTotal;
+            } else {
+                if ($account->btc_balance < $amountBtc) {
+                    throw new RuntimeException('Insufficient BTC balance.');
+                }
+                $account->btc_balance -= $amountBtc;
+            }
+            $account->save();
+
+            $order = TradeOrder::create([
+                'user_id'        => $user->id,
+                'pair_id'        => $this->pair->id,
+                'side'           => $side,
+                'order_type'     => $orderType,
+                'amount_btc'     => $amountBtc,
+                'filled_amount'  => 0,
+                'limit_price'    => $limitPrice,
+                'stop_price'     => $stopPrice,
+                'price_per_btc'  => $marketPrice,
+                'filled_kes'     => 0,
+                'status'         => 'pending',
+                'take_profit'    => $takeProfit,
+                'stop_loss'      => $stopLoss,
+                'time_in_force'  => $timeInForce,
+            ]);
+
+            if ($orderType === 'market') {
+                $this->executeOrder($order);
+            }
+
+            return $order->fresh();
+        });
+    }
+
+    /* ============================================================
+     | ORDER EXECUTION
+     ============================================================ */
+
+    public function executeOrder(TradeOrder $order, ?float $executionPrice = null): TradeOrder
+    {
+        $price = $executionPrice ?? (float) ($order->limit_price ?? $this->getMarketPrice());
+        $kesTotal = round($price * $order->amount_btc, 2);
+
+        return DB::transaction(function () use ($order, $price, $kesTotal) {
+
+            $account = TradingAccount::lockForUpdate()->firstOrCreate(
+                ['user_id' => $order->user_id],
+                ['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0]
+            );
+
+            if ($order->side === 'buy') {
+                $account->locked_balance = max(0, $account->locked_balance - $kesTotal);
+                $account->btc_balance += $order->amount_btc;
+            } else {
+                $account->balance += $kesTotal;
+            }
+            $account->save();
+
+            $order->update([
+                'status'        => 'completed',
+                'filled_amount' => $order->amount_btc,
+                'filled_kes'    => $kesTotal,
+                'price_per_btc' => $price,
+            ]);
+
+            Transaction::create([
+                'user_id'       => $order->user_id,
+                'wallet_id'     => optional($order->user->wallet)->id ?? 0,
+                'type'          => $order->side === 'buy' ? 'trade_buy' : 'trade_sell',
+                'amount'        => $kesTotal,
+                'balance_after' => $account->balance,
+                'description'   => strtoupper($order->side) . " {$order->amount_btc} BTC @ KES {$price}",
+                'reference'     => 'TRD-' . $order->id,
+                'status'        => 'completed',
+            ]);
+
+            Log::info('Trade executed', ['order_id' => $order->id, 'price' => $price]);
+
+            return $order->fresh();
+        });
+    }
+
+    public function cancelOrder(TradeOrder $order): TradeOrder
+    {
+        if (!in_array($order->status, ['pending', 'partial'], true)) {
+            throw new RuntimeException('Order cannot be cancelled.');
+        }
+
+        return DB::transaction(function () use ($order) {
+            $account = TradingAccount::lockForUpdate()->firstOrCreate(
+                ['user_id' => $order->user_id],
+                ['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0]
+            );
+
+            if ($order->side === 'buy') {
+                $refund = (float) (($order->limit_price ?? 0) * $order->amount_btc);
+                $account->locked_balance = max(0, $account->locked_balance - $refund);
+                $account->balance += $refund;
+            } else {
+                $account->btc_balance += $order->amount_btc;
+            }
+            $account->save();
+
+            $order->update(['status' => 'cancelled']);
+
+            return $order->fresh();
+        });
+    }
+
+    /* ============================================================
+     | MATCHING
+     ============================================================ */
+
+    public function matchOrder(TradeOrder $order): void
+    {
+        $opposite = $order->side === 'buy' ? 'sell' : 'buy';
+
+        $counterparties = TradeOrder::where('pair_id', $this->pair->id)
+            ->where('side', $opposite)
             ->whereIn('status', ['pending', 'partial'])
-            ->get()
-            ->groupBy('limit_price')
-            ->map(fn($orders) => $orders->sum('amount_btc'))
-            ->sort()
-            ->take(10);
-        return ['bids' => $bids, 'asks' => $asks];
-    }
-
-    public function getBtcBalance($userId)
-    {
-        if (!$this->tablesExist()) {
-            return 0;
-        }
-
-        $bought = TradeOrder::where('user_id', $userId)
-            ->where('side', 'buy')
-            ->where('status', 'completed')
-            ->sum('filled_amount');
-        $sold = TradeOrder::where('user_id', $userId)
-            ->where('side', 'sell')
-            ->where('status', 'completed')
-            ->sum('filled_amount');
-        return $bought - $sold;
-    }
-
-    public function trackAndAwardBonus($user)
-    {
-        if (!$this->tablesExist()) return null;
-
-        $tracker = \App\Models\TradingBonusTracker::firstOrCreate(['user_id' => $user->id]);
-        $lastTrade = TradeOrder::where('user_id', $user->id)
-            ->where('status', 'completed')
-            ->latest()
-            ->first();
-        if ($lastTrade && $lastTrade->created_at->lt(now()->subHours(24))) {
-            $tracker->trade_count_24h = 0;
-        }
-        $tracker->increment('trade_count_24h');
-        if ($tracker->trade_count_24h >= 8 &&
-            (!$tracker->last_bonus_awarded_at || $tracker->last_bonus_awarded_at->lt(now()->subHours(24)))) {
-            $bonusAmount = $user->tradingAccount->balance * 0.08;
-            DB::transaction(function () use ($user, $bonusAmount, $tracker) {
-                $user->tradingAccount->increment('balance', $bonusAmount);
-                $user->transactions()->create([
-                    'type' => 'trading_bonus',
-                    'amount' => $bonusAmount,
-                    'status' => 'completed',
-                    'description' => 'Trading streak bonus (8 trades in 24h)',
-                    'balance_after' => $user->tradingAccount->balance,
-                    'user_id' => $user->id,
-                    'wallet_id' => $user->tradingAccount->id,
-                ]);
-                $tracker->last_bonus_awarded_at = now();
-                $tracker->save();
-            });
-            $tracker->trade_count_24h = 0;
-            $tracker->save();
-            return $bonusAmount;
-        }
-        $tracker->save();
-        return null;
-    }
-
-    public function executeCopyTrades(TradeOrder $originalOrder)
-    {
-        if (!$this->tablesExist()) return;
-
-        if ($originalOrder->status !== 'completed') return;
-        $followers = \App\Models\FollowedTrader::where('trader_id', $originalOrder->user_id)
-            ->where('auto_copy', true)
-            ->with('follower')
+            ->orderByRaw($order->side === 'buy' ? 'limit_price ASC' : 'limit_price DESC')
             ->get();
-        foreach ($followers as $follow) {
-            $follower = $follow->follower;
-            $copyRatio = $follow->copy_ratio / 100;
-            $copiedAmount = $originalOrder->amount_btc * $copyRatio;
-            if ($follow->max_copy_amount) {
-                $maxBtc = $follow->max_copy_amount / $originalOrder->price_per_btc;
-                if ($copiedAmount > $maxBtc) $copiedAmount = $maxBtc;
-            }
-            $totalKes = $copiedAmount * $originalOrder->price_per_btc;
-            if ($follower->tradingAccount->balance < $totalKes) continue;
-            try {
-                DB::transaction(function () use ($follower, $originalOrder, $copiedAmount, $totalKes) {
-                    TradeOrder::create([
-                        'user_id' => $follower->id,
-                        'pair_id' => $this->pair->id,
-                        'side' => $originalOrder->side,
-                        'order_type' => 'market',
-                        'amount_btc' => $copiedAmount,
-                        'filled_amount' => $copiedAmount,
-                        'filled_kes' => $totalKes,
-                        'price_per_btc' => $originalOrder->price_per_btc,
-                        'status' => 'completed',
-                    ]);
-                    if ($originalOrder->side === 'buy') {
-                        $follower->tradingAccount->decrement('balance', $totalKes);
-                    } else {
-                        $follower->tradingAccount->increment('balance', $totalKes);
-                    }
-                    \App\Models\CopyTrade::create([
-                        'original_order_id' => $originalOrder->id,
-                        'follower_id' => $follower->id,
-                        'trader_id' => $originalOrder->user_id,
-                        'original_amount' => $originalOrder->amount_btc,
-                        'copied_amount' => $copiedAmount,
-                        'original_price' => $originalOrder->price_per_btc,
-                        'copied_kes' => $totalKes,
-                        'side' => $originalOrder->side,
-                        'status' => 'executed',
-                    ]);
-                });
-            } catch (\Exception $e) {
-                Log::error("Copy trade failed for user {$follower->id}: " . $e->getMessage());
-            }
+
+        foreach ($counterparties as $counter) {
+            if ($order->filled_amount >= $order->amount_btc) break;
+
+            $remainingMaker = $counter->amount_btc - $counter->filled_amount;
+            $remainingTaker = $order->amount_btc - $order->filled_amount;
+            $fill = min($remainingMaker, $remainingTaker);
+
+            $tradePrice = $counter->limit_price ?: $order->limit_price ?: $this->getMarketPrice();
+            $kesValue = round($tradePrice * $fill, 2);
+
+            DB::transaction(function () use ($order, $counter, $fill, $kesValue, $tradePrice) {
+                $order->filled_amount += $fill;
+                $order->filled_kes    += $kesValue;
+                $order->price_per_btc  = $tradePrice;
+                $order->status         = $order->filled_amount >= $order->amount_btc ? 'completed' : 'partial';
+                $order->save();
+
+                $counter->filled_amount += $fill;
+                $counter->filled_kes    += $kesValue;
+                $counter->status        = $counter->filled_amount >= $counter->amount_btc ? 'completed' : 'partial';
+                $counter->save();
+            });
         }
     }
 }

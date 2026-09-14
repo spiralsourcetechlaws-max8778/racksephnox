@@ -2,19 +2,31 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class TradingBonusTracker extends Model
 {
-    protected $fillable = ['user_id', 'trade_count_24h', 'last_bonus_awarded_at'];
+    use HasFactory;
 
-    protected $casts = [
-        'trade_count_24h' => 'integer',
-        'last_bonus_awarded_at' => 'datetime',
+    protected $fillable = [
+        'user_id', 'bonus_type', 'bonus_amount',
+        'required_volume', 'achieved_volume', 'is_claimed', 'expires_at',
     ];
 
-    public function user()
+    protected $casts = [
+        'bonus_amount'    => 'float',
+        'required_volume' => 'float',
+        'achieved_volume' => 'float',
+        'is_claimed'      => 'boolean',
+        'expires_at'      => 'datetime',
+    ];
+
+    public function user() { return $this->belongsTo(User::class); }
+
+    public function getProgressAttribute(): float
     {
-        return $this->belongsTo(User::class);
+        if ($this->required_volume === 0.0) return 100.0;
+        return min(100, round(($this->achieved_volume / $this->required_volume) * 100, 2));
     }
 }

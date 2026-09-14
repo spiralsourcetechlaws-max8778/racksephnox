@@ -3,80 +3,99 @@
 namespace App\Services\Investment;
 
 use App\Models\Investment;
-use App\Models\Machine;
-use App\Models\InvestmentPlan;
+use App\Models\MachineInvestment;
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Collection;
 
 class UnifiedInvestmentService
 {
     /**
-     * Get all investments (both legacy and RX machines) for a user
+     * Combine legacy plan investments + machine investments
+     * into a single normalized collection, skipping orphans.
      */
-    public function getAllInvestments(User $user)
+    public function getAllInvestments(?User $user = null): Collection
     {
-        $legacyInvestments = $user->investments()
-            ->with('plan')
-            ->whereNull('machine_id')
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($inv) {
-                return [
-                    'type' => 'legacy',
-                    'id' => $inv->id,
-                    'name' => $inv->plan->name ?? 'Legacy Plan',
-                    'amount' => $inv->amount,
-                    'daily_profit' => $inv->daily_profit,
-                    'total_return' => $inv->total_projected_profit,
-                    'status' => $inv->status,
-                    'start_date' => $inv->start_date,
-                    'end_date' => $inv->end_date,
-                    'progress' => $inv->progressPercentage(),
-                ];
-            });
+        $user = $user ?? auth()->user();
+        if (!$user) return collect();
 
-        $machineInvestments = $user->machineInvestments()
-            ->with('machine')
+        $legacy = Investment::with('plan')
+            ->where('user_id', $user->id)
             ->get()
-            ->map(function ($inv) {
-                return [
-                    'type' => 'machine',
-                    'id' => $inv->id,
-                    'name' => $inv->machine->name,
-                    'vip_level' => $inv->vip_level,
-                    'amount' => $inv->amount,
-                    'daily_profit' => $inv->daily_profit,
-                    'total_return' => $inv->total_return,
-                    'profit_credited' => $inv->profit_credited,
-                    'status' => $inv->status,
-                    'start_date' => $inv->start_date,
-                    'end_date' => $inv->end_date,
-                    'progress' => $inv->progressPercentage(),
-                    'days_remaining' => $inv->daysRemaining(),
-                ];
-            });
+            ->filter(fn ($i) => $i->plan !== null)
+            ->map(fn ($i) => $this->normalizeLegacy($i));
 
-        return $legacyInvestments->concat($machineInvestments);
+        $machines = MachineInvestment::with('machine')
+            ->where('user_id', $user->id)
+            ->get()
+            ->filter(fn ($i) => $i->machine !== null)
+            ->map(fn ($i) => $this->normalizeMachine($i));
+
+        return $legacy->concat($machines)->sortByDesc('created_at')->values();
     }
 
-    /**
-     * Get total invested amount (legacy + machines)
-     */
-    public function getTotalInvested(User $user): float
+    public function getStats(?User $user = null): array
     {
-        $legacyTotal = $user->investments()->sum('amount');
-        $machineTotal = $user->machineInvestments()->sum('amount');
-        return $legacyTotal + $machineTotal;
+        $all = $this->getAllInvestments($user);
+        $invested = (float) $all->sum('amount');
+        $profit   = (float) $all->sum('profit_credited');
+
+        return [
+            'total_invested'   => $invested,
+            'total_profit'     => $profit,
+            'active_count'     => $all->where('status', 'active')->count(),
+            'completed_count'  => $all->where('status', 'completed')->count(),
+            'projected_profit' => (float) $all->where('status', 'active')->sum('projected_profit'),
+            'roi'              => $invested > 0 ? round(($profit / $invested) * 100, 2) : 0,
+        ];
     }
 
-    /**
-     * Get total profit earned (legacy + machines)
-     */
-    public function getTotalProfit(User $user): float
+    /* ============================================================
+     |  NORMALIZERS
+     ============================================================ */
+
+    protected function normalizeLegacy(Investment $inv): array
     {
-        $legacyProfit = $user->transactions()->where('type', 'interest')->sum('amount');
-        $machineProfit = $user->machineInvestments()->sum('profit_credited');
-        return $legacyProfit + $machineProfit;
+        $profit = $inv->profit_credited;
+        $target = (float) ($inv->total_projected_profit ?? 0);
+
+        return [
+            'id'               => $inv->id,
+            'source'           => 'plan',
+            'name'             => $inv->plan_name,
+            'icon'             => 'fa-chart-line',
+            'color'            => 'from-gold-400 to-amber-400',
+            'amount'           => (float) $inv->amount,
+            'daily_profit'     => (float) $inv->daily_profit,
+            'profit_credited'  => $profit,
+            'projected_profit' => $target,
+            'status'           => $inv->status ?? 'active',
+            'start_date'       => $inv->start_date,
+            'end_date'         => $inv->end_date,
+            'days_remaining'   => $inv->remaining_days,
+            'progress_percent' => $inv->progress_percent,
+            'created_at'       => $inv->created_at,
+        ];
+    }
+
+    protected function normalizeMachine(MachineInvestment $inv): array
+    {
+        return [
+            'id'               => $inv->id,
+            'source'           => 'machine',
+            'name'             => $inv->machine_name,
+            'icon'             => $inv->machine_icon,
+            'color'            => $inv->machine_color,
+            'amount'           => (float) $inv->amount,
+            'daily_profit'     => (float) ($inv->daily_profit ?? 0),
+            'profit_credited'  => (float) ($inv->profit_credited ?? 0),
+            'projected_profit' => (float) ($inv->total_projected_profit ?? 0),
+            'status'           => $inv->status ?? 'active',
+            'start_date'       => $inv->start_date,
+            'end_date'         => $inv->end_date,
+            'days_remaining'   => $inv->days_remaining ?? 0,
+            'progress_percent' => method_exists($inv, 'progressPercentage')
+                                    ? $inv->progressPercentage() : 0,
+            'created_at'       => $inv->created_at,
+        ];
     }
 }

@@ -2,291 +2,349 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\LotteryBonusWheelSpin;
 use App\Models\LotteryGame;
 use App\Models\LotterySpin;
-use App\Models\LotterySymbol;
 use App\Models\LotteryTournament;
-use App\Services\LotteryService;
-use App\Services\LotteryMissionService;
-use App\Services\LotteryBonusWheelService;
+use App\Models\LotteryUserMission;
 use App\Services\Lottery\AchievementService;
+use App\Services\Lottery\BonusWheelService;
+use App\Services\Lottery\JackpotPoolService;
+use App\Services\Lottery\LotteryService;
+use App\Services\Lottery\MissionService;
 use App\Services\Lottery\StreakService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class LotteryController extends Controller
 {
-    protected $game;
-    protected $missionService;
-    protected $bonusWheelService;
-    protected $achievementService;
-    protected $streakService;
+    public function __construct(
+        protected LotteryService $service,
+        protected AchievementService $achievements,
+        protected StreakService $streaks,
+        protected MissionService $missions,
+        protected BonusWheelService $wheel,
+        protected JackpotPoolService $jackpots
+    ) {}
 
-    public function __construct()
-    {
-        $this->game = LotteryGame::where('is_active', true)->firstOrFail();
-        $this->missionService = new LotteryMissionService();
-        $this->bonusWheelService = new LotteryBonusWheelService();
-        $this->achievementService = new AchievementService();
-        $this->streakService = new StreakService();
-    }
-
-    /**
-     * Main lottery page
-     */
+    /* ============================================================
+     |  INDEX — main lottery lobby
+     ============================================================ */
     public function index()
     {
         $user = Auth::user();
-        $game = $this->game;  // ✅ FIX: define $game for compact()
-        $balance = $user->wallet?->balance ?? 0;
-        $service = new LotteryService($game);
-        $canFreeSpin = $service->canUseFreeSpin($user);
-        $freeSpinHours = $service->getNextFreeSpinHours($user);
-        $history = LotterySpin::where('user_id', $user->id)->latest()->take(10)->get();
+        $game = LotteryGame::active()->first()
+             ?? LotteryGame::first();
 
-        // Get active symbols for the slot machine
-        $symbols = LotterySymbol::where('is_active', true)->orderBy('sort_order')->get();
+        if (!$game) {
+            return view('lottery.index', [
+                'game'               => null,
+                'balance'            => $user->wallet?->balance ?? 0,
+                'history'            => collect(),
+                'canFreeSpin'        => false,
+                'freeSpinHours'      => 24,
+                'leaderboard'        => collect(),
+                'activeTournament'   => null,
+                'completedMissions'  => 0,
+                'totalMissions'      => 0,
+                'canSpinBonusWheel'  => false,
+                'symbols'            => [],
+                'jackpots'           => collect(),
+            ]);
+        }
 
-        // Weekly leaderboard
+        $balance = (float) ($user->wallet?->balance ?? 0);
+
+        $history = LotterySpin::with('game')
+            ->forUser($user->id)
+            ->latest()
+            ->take(10)
+            ->get();
+
+        $lastFreeSpin = LotterySpin::where('user_id', $user->id)
+            ->where('is_free_spin', true)
+            ->latest('last_free_spin_at')
+            ->first();
+
+        $canFreeSpin = !$lastFreeSpin
+            || $lastFreeSpin->last_free_spin_at?->lt(now()->subHours(24));
+
+        $freeSpinHours = $lastFreeSpin
+            ? max(0, 24 - now()->diffInHours($lastFreeSpin->last_free_spin_at))
+            : 0;
+
+        $symbols = $game->symbols->map(fn ($s) => [
+            'name'         => $s->name,
+            'icon'         => $s->icon,
+            'display_name' => $s->display_name,
+            'multiplier'   => $s->multiplier,
+        ])->toArray();
+
         $leaderboard = LotterySpin::where('created_at', '>=', now()->startOfWeek())
-            ->selectRaw('user_id, SUM(win_amount) as total_win')
+            ->selectRaw('user_id, SUM(win_amount) AS total_win, COUNT(*) AS spins')
             ->groupBy('user_id')
-            ->orderBy('total_win', 'desc')
+            ->orderByDesc('total_win')
             ->with('user')
             ->take(5)
             ->get();
 
-        // Tournament data
-        $activeTournament = LotteryTournament::where('is_active', true)
-            ->where('start_date', '<=', now())
-            ->where('end_date', '>=', now())
-            ->first();
+        $activeTournament = LotteryTournament::active()->first();
 
-        // Missions
-        $missions = $this->missionService->getTodayMissions($user);
+        $missions = $this->missions->getTodayMissions($user);
         $completedMissions = collect($missions)->where('completed', true)->count();
         $totalMissions = count($missions);
 
-        // Bonus wheel availability
-        $canSpinBonusWheel = $this->bonusWheelService->canSpin($user);
+        $canSpinBonusWheel = $this->wheel->canSpin($user);
 
-        // Daily streak check
-        $this->streakService->checkAndReward($user);
+        $jackpots = Cache::remember('lottery_jackpots', 30, fn () => $this->jackpots->allPools());
 
         return view('lottery.index', compact(
-            'game', 'balance', 'history', 'canFreeSpin', 'freeSpinHours', 'leaderboard',
-            'activeTournament', 'completedMissions', 'totalMissions', 'canSpinBonusWheel',
-            'symbols'
+            'game', 'balance', 'history', 'canFreeSpin', 'freeSpinHours',
+            'leaderboard', 'activeTournament', 'completedMissions', 'totalMissions',
+            'canSpinBonusWheel', 'symbols', 'jackpots'
         ));
     }
 
-    /**
-     * Regular spin
-     */
+    /* ============================================================
+     |  SPIN — POST /lottery/spin
+     ============================================================ */
     public function spin(Request $request)
     {
-        $request->validate([
-            'bet' => 'required|numeric|min:1',
-            'client_seed' => 'nullable|string',
-        ]);
-        $service = new LotteryService($this->game);
+        $user = Auth::user();
+        $game = LotteryGame::active()->first() ?? LotteryGame::first();
+
+        if (!$game) {
+            return response()->json(['success' => false, 'message' => 'No game available.'], 404);
+        }
+
         try {
-            $result = $service->play(Auth::user(), $request->bet, false, $request->client_seed);
+            $spin = $this->service->spin($user, $game, $request->input('client_seed'));
+
+            // Post-spin hooks
+            $achievements = $this->achievements->checkAndAward($user);
+            $streak       = $this->streaks->checkAndReward($user);
+            $missionProgress = $this->missions->progress($user, $spin);
+
             return response()->json([
                 'success' => true,
-                'symbols' => array_map(fn($s) => ['name' => $s->name, 'display_name' => $s->display_name, 'icon' => $s->icon], $result['symbols']),
-                'win_amount' => $result['win_amount'],
-                'net_change' => $result['net_change'],
-                'mini_jackpot' => $result['mini_jackpot'],
-                'super_jackpot' => $result['super_jackpot'],
-                'free_spin_trigger' => $result['free_spin_trigger'],
-                'progressive_jackpot' => $result['progressive_jackpot'],
-                'new_balance' => Auth::user()->wallet->fresh()->balance,
-                'nonce' => $result['nonce'],
-                'client_seed' => $result['client_seed'],
-                'server_seed_hashed' => $result['server_seed_hashed'],
+                'spin'    => [
+                    'id'          => $spin->id,
+                    'symbols'     => $spin->symbols,
+                    'bet'         => (float) $spin->bet_amount,
+                    'win'         => (float) $spin->win_amount,
+                    'jackpot'     => (float) $spin->jackpot_won,
+                    'jackpot_tier'=> $spin->jackpot_tier,
+                    'net'         => $spin->net_result,
+                    'hash'        => $spin->provably_fair_hash,
+                ],
+                'balance'      => (float) $user->fresh()->wallet->balance,
+                'achievements' => collect($achievements)->map(fn ($a) => [
+                    'name' => $a->name, 'reward' => $a->reward_amount,
+                ])->toArray(),
+                'streak'       => $streak,
+                'missions'     => collect($missionProgress)->map(fn ($m) => [
+                    'name'     => $m->mission->name,
+                    'progress' => $m->progress,
+                    'target'   => $m->mission->requirement_value,
+                    'completed'=> $m->completed,
+                ])->toArray(),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
-    /**
-     * Free daily spin
-     */
+    /* ============================================================
+     |  FREE SPIN — POST /lottery/free-spin
+     ============================================================ */
     public function freeSpin(Request $request)
     {
-        $service = new LotteryService($this->game);
-        if (!$service->canUseFreeSpin(Auth::user())) {
-            return response()->json(['success' => false, 'message' => 'Free spin already used today.'], 422);
+        $user = Auth::user();
+        $game = LotteryGame::active()->first();
+        if (!$game) return response()->json(['success' => false, 'message' => 'No game.'], 404);
+
+        $last = LotterySpin::where('user_id', $user->id)
+            ->where('is_free_spin', true)
+            ->latest('last_free_spin_at')
+            ->first();
+
+        if ($last && $last->last_free_spin_at?->gt(now()->subHours(24))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Free spin not yet available.',
+            ], 422);
         }
+
         try {
-            $result = $service->play(Auth::user(), 0, true, $request->client_seed ?? null);
+            $spin = $this->service->spin($user, $game, null, true);
+            $this->achievements->checkAndAward($user);
+
             return response()->json([
                 'success' => true,
-                'symbols' => array_map(fn($s) => ['name' => $s->name, 'display_name' => $s->display_name, 'icon' => $s->icon], $result['symbols']),
-                'win_amount' => $result['win_amount'],
-                'net_change' => $result['net_change'],
-                'mini_jackpot' => $result['mini_jackpot'],
-                'super_jackpot' => $result['super_jackpot'],
-                'free_spin_trigger' => $result['free_spin_trigger'],
-                'progressive_jackpot' => $result['progressive_jackpot'],
-                'new_balance' => Auth::user()->wallet->fresh()->balance,
-                'nonce' => $result['nonce'],
-                'client_seed' => $result['client_seed'],
-                'server_seed_hashed' => $result['server_seed_hashed'],
+                'spin'    => [
+                    'symbols' => $spin->symbols,
+                    'win'     => (float) $spin->win_amount,
+                ],
+                'balance' => (float) $user->fresh()->wallet->balance,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
-    /**
-     * Buy 10 free spins (Bonus Buy)
-     */
+    /* ============================================================
+     |  BUY BONUS — POST /lottery/buy-bonus
+     ============================================================ */
     public function buyBonus(Request $request)
     {
-        $request->validate(['cost' => 'required|numeric|min:100']);
         $user = Auth::user();
-        if ($user->wallet->balance < $request->cost) {
-            return response()->json(['success' => false, 'message' => 'Insufficient balance']);
+        $game = LotteryGame::active()->first();
+        if (!$game || !$game->enable_bonus_buy) {
+            return response()->json(['success' => false, 'message' => 'Bonus buy not available.'], 422);
         }
-        DB::transaction(function () use ($user, $request) {
-            $user->wallet->decrement('balance', $request->cost);
-            $user->transactions()->create([
-                'type' => 'bonus_buy',
-                'amount' => -$request->cost,
-                'status' => 'completed',
-                'description' => 'Bonus Buy: 10 Free Spins',
-                'balance_after' => $user->wallet->balance,
-                'user_id' => $user->id,
-                'wallet_id' => $user->wallet->id,
-            ]);
-            $user->free_spins_available = ($user->free_spins_available ?? 0) + 10;
-            $user->save();
-        });
-        return response()->json(['success' => true, 'free_spins' => 10]);
-    }
 
-    /**
-     * Gamble feature (double or nothing)
-     */
-    public function gamble(Request $request)
-    {
-        $request->validate([
-            'spin_id' => 'required|exists:lottery_spins,id',
-            'choice' => 'required|in:red,black',
+        $price = (float) $game->bonus_buy_price;
+        $wallet = $user->wallet;
+
+        if (!$wallet || $wallet->balance < $price) {
+            return response()->json(['success' => false, 'message' => 'Insufficient balance.'], 422);
+        }
+
+        $wallet->balance -= $price;
+        $wallet->save();
+
+        // Grant 10 free spins as bonus
+        $user->free_spins_available = ($user->free_spins_available ?? 0) + 10;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => '10 free spins credited.',
+            'balance' => (float) $wallet->fresh()->balance,
+            'free_spins' => (int) $user->free_spins_available,
         ]);
-        $spin = LotterySpin::where('user_id', Auth::id())->findOrFail($request->spin_id);
-        if ($spin->win_amount <= 0) {
-            return response()->json(['success' => false, 'message' => 'No win to gamble']);
-        }
-        $result = rand(1, 2) == 1 ? 'red' : 'black';
-        DB::transaction(function () use ($spin, $request, $result) {
-            if ($request->choice === $result) {
-                $newWin = $spin->win_amount * 2;
-                $spin->user->wallet->increment('balance', $newWin - $spin->win_amount);
-                $spin->win_amount = $newWin;
-                $spin->save();
-            } else {
-                $spin->user->wallet->decrement('balance', $spin->win_amount);
-                $spin->win_amount = 0;
-                $spin->save();
-            }
-        });
-        return response()->json(['success' => true, 'result' => $result, 'new_win' => $spin->win_amount]);
     }
 
-    /**
-     * Spin history
-     */
+    /* ============================================================
+     |  VERIFY — POST /lottery/verify
+     ============================================================ */
+    public function verify(Request $request)
+    {
+        $data = $request->validate([
+            'server_seed' => 'required|string',
+            'client_seed' => 'required|string',
+            'nonce'       => 'required|integer',
+            'hash'        => 'required|string',
+        ]);
+
+        $ok = app(\App\Services\Lottery\RngService::class)->verify(
+            $data['server_seed'], $data['client_seed'], (int) $data['nonce'], $data['hash']
+        );
+
+        return response()->json(['verified' => $ok]);
+    }
+
+    /* ============================================================
+     |  HISTORY — GET /lottery/history
+     ============================================================ */
     public function history()
     {
-        $history = LotterySpin::where('user_id', Auth::id())->latest()->paginate(20);
-        return view('lottery.history', compact('history'));
+        $spins = LotterySpin::with('game')
+            ->forUser(Auth::id())
+            ->latest()
+            ->paginate(30);
+
+        return view('lottery.history', compact('spins'));
     }
 
-    /**
-     * Leaderboard (weekly, monthly, all-time)
-     */
-    public function leaderboard($period = 'weekly')
+    /* ============================================================
+     |  LEADERBOARD — GET /lottery/leaderboard/{period}
+     ============================================================ */
+    public function leaderboard(string $period = 'week')
     {
-        $startDate = match($period) {
-            'weekly' => now()->startOfWeek(),
-            'monthly' => now()->startOfMonth(),
-            default => now()->subDays(7),
-        };
-        $topWinners = LotterySpin::where('created_at', '>=', $startDate)
-            ->selectRaw('user_id, SUM(win_amount) as total_win')
-            ->groupBy('user_id')
-            ->orderBy('total_win', 'desc')
-            ->with('user')
-            ->take(20)
-            ->get();
-        return view('lottery.leaderboard', compact('topWinners', 'period'));
+        $rows = $this->service->leaderboard($period, 25);
+        return view('lottery.leaderboard', compact('rows', 'period'));
     }
 
-    /**
-     * User achievements
-     */
+    /* ============================================================
+     |  ACHIEVEMENTS — GET /lottery/achievements
+     ============================================================ */
     public function achievements()
     {
-        $user = Auth::user();
-        $achievements = $user->achievements()->with('achievement')->get();
-        $allAchievements = \App\Models\LotteryAchievement::all();
-        return view('lottery.achievements', compact('achievements', 'allAchievements'));
+        $progress = $this->achievements->progressFor(Auth::user());
+        return view('lottery.achievements', compact('progress'));
     }
 
-    /**
-     * Personal lottery dashboard (stats)
-     */
+    /* ============================================================
+     |  MISSIONS — GET /lottery/missions
+     ============================================================ */
+    public function missions()
+    {
+        $missions = $this->missions->getTodayMissions(Auth::user());
+        return view('lottery.missions', compact('missions'));
+    }
+
+    /* ============================================================
+     |  CLAIM MISSION — POST /lottery/missions/{userMission}/claim
+     ============================================================ */
+    public function claimMission(LotteryUserMission $userMission)
+    {
+        try {
+            $reward = $this->missions->claim(Auth::user(), $userMission);
+            return back()->with('success', 'Reward claimed: KES ' . number_format($reward, 2));
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /* ============================================================
+     |  BONUS WHEEL — GET /lottery/bonus-wheel
+     ============================================================ */
+    public function bonusWheel()
+    {
+        $user = Auth::user();
+        $canSpin = $this->wheel->canSpin($user);
+        $history = $this->wheel->history($user);
+        $segments = \App\Models\LotteryBonusWheel::active()->first()?->segments
+                 ?? BonusWheelService::defaultSegments();
+
+        return view('lottery.bonus-wheel', compact('canSpin', 'history', 'segments'));
+    }
+
+    /* ============================================================
+     |  SPIN BONUS WHEEL — POST /lottery/bonus-wheel/spin
+     ============================================================ */
+    public function spinBonusWheel()
+    {
+        try {
+            $result = $this->wheel->spin(Auth::user());
+            return response()->json(['success' => true] + $result);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
+    /* ============================================================
+     |  DASHBOARD — GET /lottery/dashboard
+     ============================================================ */
     public function dashboard()
     {
         $user = Auth::user();
+
         $stats = [
-            'total_spins' => LotterySpin::where('user_id', $user->id)->count(),
-            'total_bet' => LotterySpin::where('user_id', $user->id)->sum('bet_amount'),
-            'total_win' => LotterySpin::where('user_id', $user->id)->sum('win_amount'),
-            'mini_jackpots' => LotterySpin::where('user_id', $user->id)->where('mini_jackpot_hit', true)->count(),
-            'super_jackpots' => LotterySpin::where('user_id', $user->id)->where('super_jackpot_hit', true)->count(),
-            'free_spins' => $user->free_spins_available ?? 0,
+            'total_spins'    => LotterySpin::forUser($user->id)->count(),
+            'total_wins'     => LotterySpin::forUser($user->id)->wins()->count(),
+            'total_won'      => (float) LotterySpin::forUser($user->id)->sum('win_amount'),
+            'total_bet'      => (float) LotterySpin::forUser($user->id)->sum('bet_amount'),
+            'biggest_win'    => (float) LotterySpin::forUser($user->id)->max('win_amount'),
+            'jackpot_wins'   => LotterySpin::forUser($user->id)->jackpotWins()->count(),
         ];
-        $stats['net_profit'] = $stats['total_win'] - $stats['total_bet'];
-        $recentSpins = LotterySpin::where('user_id', $user->id)->latest()->take(10)->get();
 
-        $activeTournament = LotteryTournament::where('is_active', true)
-            ->where('start_date', '<=', now())
-            ->where('end_date', '>=', now())
-            ->first();
-        $tournamentRank = null;
-        if ($activeTournament) {
-            $entry = $activeTournament->entries()->where('user_id', $user->id)->first();
-            $tournamentRank = $entry ? $entry->rank : null;
-        }
+        $streak   = $this->streaks->status($user);
+        $missions = $this->missions->getTodayMissions($user);
+        $jackpots = $this->jackpots->allPools();
 
-        $missions = $this->missionService->getTodayMissions($user);
-        $completedMissions = collect($missions)->where('completed', true)->count();
-        $totalMissions = count($missions);
-
-        return view('lottery.dashboard', compact('stats', 'recentSpins', 'tournamentRank', 'activeTournament', 'completedMissions', 'totalMissions'));
-    }
-
-    /**
-     * Verify provably fair spin
-     */
-    public function verifySpin(Request $request)
-    {
-        $request->validate([
-            'spin_id' => 'required|exists:lottery_spins,id',
-            'server_seed' => 'required|string',
-        ]);
-        $spin = LotterySpin::findOrFail($request->spin_id);
-        if ($spin->user_id !== Auth::id() && !Auth::user()->is_admin) {
-            abort(403);
-        }
-        $service = new LotteryService($this->game);
-        $result = $service->verifySpin($spin, $request->server_seed);
-        return response()->json($result);
+        return view('lottery.dashboard', compact('stats', 'streak', 'missions', 'jackpots'));
     }
 }

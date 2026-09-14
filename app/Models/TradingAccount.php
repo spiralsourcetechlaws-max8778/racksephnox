@@ -2,20 +2,30 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class TradingAccount extends Model
 {
+    use HasFactory;
+
     protected $fillable = ['user_id', 'balance', 'locked_balance', 'btc_balance'];
 
     protected $casts = [
-        'balance' => 'decimal:2',
-        'locked_balance' => 'decimal:2',
-        'btc_balance' => 'decimal:8',
+        'balance'        => 'float',
+        'locked_balance' => 'float',
+        'btc_balance'    => 'float',
     ];
 
-    public function user()
+    public function user() { return $this->belongsTo(User::class); }
+
+    public function getAvailableBalanceAttribute(): float
     {
-        return $this->belongsTo(User::class);
+        return max(0, $this->balance);
+    }
+
+    public function getTotalValueAttribute(): float
+    {
+        return $this->balance + $this->locked_balance;
     }
 }

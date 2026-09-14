@@ -186,3 +186,30 @@ Route::get('/v1/info', function () {
         ],
     ]);
 });
+
+// ==================== LOTTERY API v1 ====================
+Route::prefix('v1/lottery')->group(function () {
+
+    // Public
+    Route::get('/games',           [App\Http\Controllers\Api\LotteryController::class, 'games']);
+    Route::get('/jackpots',        [App\Http\Controllers\Api\LotteryController::class, 'jackpots']);
+    Route::get('/leaderboard',     [App\Http\Controllers\Api\LotteryController::class, 'leaderboard']);
+    Route::get('/recent-wins',     [App\Http\Controllers\Api\LotteryController::class, 'recentWins']);
+    Route::get('/tournaments',     [App\Http\Controllers\Api\LotteryController::class, 'tournaments']);
+    Route::post('/verify',         [App\Http\Controllers\Api\LotteryController::class, 'verify']);
+
+    // Authenticated
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/my-stats',         [App\Http\Controllers\Api\LotteryController::class, 'myStats']);
+        Route::post('/spin',            [App\Http\Controllers\Api\LotteryController::class, 'spin']);
+        Route::post('/free-spin',       [App\Http\Controllers\Api\LotteryController::class, 'freeSpin']);
+        Route::post('/buy-bonus',       [App\Http\Controllers\Api\LotteryController::class, 'buyBonus']);
+        Route::get('/my-missions',      [App\Http\Controllers\Api\LotteryController::class, 'myMissions']);
+        Route::post('/missions/{id}/claim', [App\Http\Controllers\Api\LotteryController::class, 'claimMission']);
+        Route::get('/achievements',     [App\Http\Controllers\Api\LotteryController::class, 'achievements']);
+        Route::get('/bonus-wheel',      [App\Http\Controllers\Api\LotteryController::class, 'bonusWheel']);
+        Route::post('/bonus-wheel/spin',[App\Http\Controllers\Api\LotteryController::class, 'spinBonusWheel']);
+        Route::get('/guilds',           [App\Http\Controllers\Api\LotteryController::class, 'guilds']);
+        Route::get('/guilds/{tournament}/leaderboard', [App\Http\Controllers\Api\LotteryController::class, 'guildLeaderboard']);
+    });
+});

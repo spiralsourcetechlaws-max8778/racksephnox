@@ -4,31 +4,34 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
 
 class MachineInvestment extends Model
 {
     use HasFactory;
 
-    const STATUS_ACTIVE = 'active';
-    const STATUS_COMPLETED = 'completed';
-    const STATUS_CANCELLED = 'cancelled';
-
     protected $fillable = [
-        'user_id', 'machine_id', 'vip_level', 'amount', 'daily_profit', 'total_return',
-        'start_date', 'end_date', 'status', 'profit_credited', 'last_profit_date'
+        'user_id', 'machine_id', 'vip_level',
+        'amount', 'daily_profit', 'total_projected_profit',
+        'profit_credited', 'status',
+        'start_date', 'end_date', 'last_accrued_at',
+        'withdrawn', 'early_withdrawn', 'penalty_applied',
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
-        'daily_profit' => 'decimal:2',
-        'total_return' => 'decimal:2',
-        'profit_credited' => 'decimal:2',
-        'start_date' => 'datetime',
-        'end_date' => 'datetime',
-        'last_profit_date' => 'datetime',
+        'amount'                 => 'float',
+        'daily_profit'           => 'float',
+        'total_projected_profit' => 'float',
+        'profit_credited'        => 'float',
+        'vip_level'              => 'integer',
+        'start_date'             => 'datetime',
+        'end_date'               => 'datetime',
+        'last_accrued_at'        => 'datetime',
+        'withdrawn'              => 'boolean',
+        'early_withdrawn'        => 'boolean',
+        'penalty_applied'        => 'float',
     ];
 
+    /* ---------- Relationships ---------- */
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -39,34 +42,49 @@ class MachineInvestment extends Model
         return $this->belongsTo(Machine::class);
     }
 
-    public function isActive()
+    public function vip()
     {
-        return $this->status === self::STATUS_ACTIVE && $this->end_date->isFuture();
+        return $this->hasOne(MachineVip::class, 'machine_id', 'machine_id')
+                    ->where('level', $this->vip_level);
     }
 
-    public function daysElapsed()
-    {
-        if (!$this->start_date) return 0;
-        return max(0, Carbon::now()->diffInDays($this->start_date, false));
-    }
+    /* ---------- Scopes ---------- */
+    public function scopeActive($q)      { return $q->where('status', 'active'); }
+    public function scopeCompleted($q)   { return $q->where('status', 'completed'); }
+    public function scopeForUser($q,$id) { return $q->where('user_id', $id); }
 
-    public function daysRemaining()
+    /* ---------- Helpers ---------- */
+    public function getDaysRemainingAttribute(): int
     {
         if (!$this->end_date) return 0;
-        $remaining = Carbon::now()->diffInDays($this->end_date, false);
-        return max(0, $remaining);
+        return max(0, now()->diffInDays($this->end_date, false));
     }
 
-    public function progressPercentage()
+    public function getDaysElapsedAttribute(): int
     {
-        $totalDays = $this->machine->duration_days;
-        if ($totalDays <= 0) return 0;
-        $elapsed = $this->daysElapsed();
-        return min(100, round(($elapsed / $totalDays) * 100, 2));
+        if (!$this->start_date) return 0;
+        return max(0, $this->start_date->diffInDays(now()));
     }
 
-    public function currentProfit()
+    public function getProgressPercentAttribute(): float
     {
-        return round($this->profit_credited, 2);
+        if (!$this->machine || !$this->machine->duration_days) return 0;
+        $elapsed = $this->days_elapsed;
+        return min(100, round(($elapsed / $this->machine->duration_days) * 100, 2));
+    }
+
+    public function getProjectedTotalAttribute(): float
+    {
+        return round($this->amount + $this->total_projected_profit, 2);
+    }
+
+    public function getCurrentValueAttribute(): float
+    {
+        return round($this->amount + $this->profit_credited, 2);
+    }
+
+    public function getCanWithdrawAttribute(): bool
+    {
+        return $this->status === 'active' && !$this->withdrawn;
     }
 }

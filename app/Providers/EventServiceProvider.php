@@ -12,6 +12,15 @@ use App\Listeners\AwardReferralBonus;
 class EventServiceProvider extends ServiceProvider
 {
     protected $listen = [
+        \App\Events\Lottery\BigWinEvent::class => [
+            \App\Listeners\Lottery\SendBigWinNotification::class,
+        ],
+        \App\Events\Lottery\JackpotWonEvent::class => [
+            \App\Listeners\Lottery\BroadcastJackpotWon::class,
+        ],
+        \App\Events\Lottery\TournamentEndedEvent::class => [
+            \App\Listeners\Lottery\DistributeTournamentPrizesListener::class,
+        ],
         Registered::class => [
             SendEmailVerificationNotification::class,
         ],

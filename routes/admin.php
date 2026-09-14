@@ -65,3 +65,34 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::get('/rtp-simulate', [AdminLotteryController::class, 'rtpSimulate'])->name('rtp-simulate');
     });
 });
+
+// ==================== ADMIN · LOANS ====================
+Route::prefix('loans')->name('admin.loans.')->group(function () {
+    Route::get('/', [App\Http\Controllers\Admin\LoanController::class, 'index'])->name('index');
+    Route::get('/{loan}', [App\Http\Controllers\Admin\LoanController::class, 'show'])->name('show');
+    Route::post('/{loan}/approve', [App\Http\Controllers\Admin\LoanController::class, 'approve'])->name('approve');
+    Route::post('/{loan}/reject', [App\Http\Controllers\Admin\LoanController::class, 'reject'])->name('reject');
+    Route::post('/{loan}/disburse', [App\Http\Controllers\Admin\LoanController::class, 'disburse'])->name('disburse');
+});
+
+// ==================== ADMIN · LOTTERY ====================
+Route::prefix('lottery')->name('lottery.')->group(function () {
+    Route::get('/',                    [App\Http\Controllers\Admin\LotteryController::class, 'index'])->name('index');
+    Route::get('/analytics',           [App\Http\Controllers\Admin\LotteryController::class, 'analytics'])->name('analytics');
+    Route::post('/rtp-simulate',       [App\Http\Controllers\Admin\LotteryController::class, 'rtpSimulate'])->name('rtp-simulate');
+    Route::get('/export',              [App\Http\Controllers\Admin\LotteryController::class, 'export'])->name('export');
+
+    Route::get('/symbols',             [App\Http\Controllers\Admin\LotteryController::class, 'symbols'])->name('symbols');
+    Route::post('/symbols',            [App\Http\Controllers\Admin\LotteryController::class, 'storeSymbol'])->name('symbols.store');
+    Route::post('/symbols/import',     [App\Http\Controllers\Admin\LotteryController::class, 'importSymbols'])->name('symbols.import');
+    Route::post('/symbols/{symbol}',   [App\Http\Controllers\Admin\LotteryController::class, 'updateSymbol'])->name('symbols.update');
+    Route::delete('/symbols/{symbol}', [App\Http\Controllers\Admin\LotteryController::class, 'destroySymbol'])->name('symbols.destroy');
+
+    Route::get('/jackpots',            [App\Http\Controllers\Admin\LotteryController::class, 'jackpots'])->name('jackpots');
+    Route::put('/jackpots/{pool}',     [App\Http\Controllers\Admin\LotteryController::class, 'updateJackpot'])->name('jackpots.update');
+    Route::post('/jackpots/{pool}/force-drop', [App\Http\Controllers\Admin\LotteryController::class, 'forceJackpotDrop'])->name('jackpots.force-drop');
+    Route::post('/jackpots/{pool}/reset',      [App\Http\Controllers\Admin\LotteryController::class, 'resetJackpot'])->name('jackpots.reset');
+
+    Route::get('/{lottery}/edit',      [App\Http\Controllers\Admin\LotteryController::class, 'edit'])->name('edit');
+    Route::put('/{lottery}',           [App\Http\Controllers\Admin\LotteryController::class, 'update'])->name('update');
+});

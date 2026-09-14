@@ -1,11 +1,32 @@
 <?php
+
 namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+
 class LotteryTournamentEntry extends Model
 {
+    use HasFactory;
+
     protected $table = 'lottery_tournament_entries';
-    protected $fillable = ['tournament_id', 'user_id', 'total_win', 'total_spins', 'rank', 'prize_awarded'];
-    protected $casts = ['total_win' => 'decimal:2', 'prize_awarded' => 'decimal:2'];
-    public function tournament() { return $this->belongsTo(LotteryTournament::class); }
-    public function user() { return $this->belongsTo(User::class); }
+
+    protected $fillable = [
+        'lottery_tournament_id', 'user_id', 'score', 'rank',
+    ];
+
+    protected $casts = [
+        'score' => 'integer',
+        'rank'  => 'integer',
+    ];
+
+    public function tournament()
+    {
+        return $this->belongsTo(LotteryTournament::class, 'lottery_tournament_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }

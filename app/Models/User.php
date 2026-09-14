@@ -137,6 +137,11 @@ class User extends Authenticatable
 
     // ========== BOOT METHOD ==========
 
+    public function tradingBonusTracker()
+    {
+        return $this->hasOne(\App\Models\TradingBonusTracker::class);
+    }
+
     protected static function booted()
     {
         static::created(function ($user) {
@@ -167,4 +172,31 @@ class User extends Authenticatable
             }
         });
     }
+
+    /* ---------- Loans Domain ---------- */
+    public function loans()
+    {
+        return $this->hasMany(Loan::class);
+    }
+
+    public function activeLoans()
+    {
+        return $this->hasMany(Loan::class)->where('status', 'active');
+    }
+
+    public function loanRepayments()
+    {
+        return $this->hasMany(LoanRepayment::class);
+    }
+
+    public function guaranteedLoans()
+    {
+        return $this->hasMany(LoanGuarantor::class);
+    }
+
+    public function loanCreditScore()
+    {
+        return $this->hasOne(LoanCreditScore::class);
+    }
+
 }

@@ -2,24 +2,37 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class LotteryDailyStreak extends Model
 {
+    use HasFactory;
+
     protected $table = 'lottery_daily_streaks';
 
     protected $fillable = [
-        'user_id', 'streak_count', 'last_login_date', 'reward_claimed'
+        'user_id', 'current_streak', 'longest_streak', 'last_spin_date',
     ];
 
     protected $casts = [
-        'last_login_date' => 'date',
-        'reward_claimed' => 'boolean',
-        'streak_count' => 'integer',
+        'current_streak' => 'integer',
+        'longest_streak' => 'integer',
+        'last_spin_date' => 'date',
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function getStreakMultiplierAttribute(): float
+    {
+        return match (true) {
+            $this->current_streak >= 90 => 3.0,
+            $this->current_streak >= 30 => 2.0,
+            $this->current_streak >= 7  => 1.5,
+            default                     => 1.0,
+        };
     }
 }

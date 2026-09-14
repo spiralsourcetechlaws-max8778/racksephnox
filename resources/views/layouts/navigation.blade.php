@@ -5,6 +5,9 @@
             <div class="hidden sm:flex sm:space-x-8 items-center">
                 <a href="{{ route('dashboard') }}" class="nav-link-golden {{ request()->routeIs('dashboard') ? 'active' : '' }}"><i class="fas fa-chart-line mr-1"></i> Dashboard</a>
                 <a href="{{ route('machines.index') }}" class="nav-link-golden {{ request()->routeIs('machines.*') ? 'active' : '' }}"><i class="fas fa-microchip mr-1"></i> Machines</a>
+    <x-nav-link :href="route('loans.index')" :active="request()->routeIs('loans.*')">
+        {{ __('Loans') }}
+    </x-nav-link>
                 <a href="{{ route('trading.index') }}" class="nav-link-golden {{ request()->routeIs('trading.*') ? 'active' : '' }}"><i class="fab fa-bitcoin mr-1"></i> Trading</a>
                 <a href="{{ route('lottery.index') }}" class="nav-link-golden {{ request()->routeIs('lottery.*') ? 'active' : '' }}"><i class="fas fa-dice-d6 mr-1"></i> Lottery</a>
                 <a href="{{ route('investments.index') }}" class="nav-link-golden {{ request()->routeIs('investments.*') ? 'active' : '' }}"><i class="fas fa-chart-simple mr-1"></i> Investments</a>

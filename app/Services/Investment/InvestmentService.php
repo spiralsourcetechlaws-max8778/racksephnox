@@ -4,115 +4,139 @@ namespace App\Services\Investment;
 
 use App\Models\Investment;
 use App\Models\InvestmentPlan;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Wallet;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class InvestmentService
 {
-    /**
-     * Create a new investment.
-     */
-    public function create(User $user, InvestmentPlan $plan, $amount, $autoReinvest = false, $compoundType = 'daily_payout')
+    protected InterestCalculator $calculator;
+
+    public function __construct(InterestCalculator $calculator)
     {
-        if ($amount < $plan->min_amount || $amount > $plan->max_amount) {
-            throw new \InvalidArgumentException('Amount outside allowed range');
+        $this->calculator = $calculator;
+    }
+
+    /**
+     * Create a new investment for a user in a given plan.
+     */
+    public function create(User $user, InvestmentPlan $plan, float $amount): Investment
+    {
+        if (!$plan->is_active) {
+            throw new RuntimeException('This plan is not currently active.');
         }
-        if ($user->wallet->balance < $amount) {
-            throw new \InvalidArgumentException('Insufficient balance');
+        if ($amount < $plan->min_amount) {
+            throw new RuntimeException('Minimum for this plan is KES ' . number_format($plan->min_amount, 2));
+        }
+        if ($amount > $plan->max_amount) {
+            throw new RuntimeException('Maximum for this plan is KES ' . number_format($plan->max_amount, 2));
         }
 
-        return DB::transaction(function () use ($user, $plan, $amount, $autoReinvest, $compoundType) {
+        $wallet = $user->wallet ?? Wallet::firstOrCreate(['user_id' => $user->id], ['balance' => 0]);
+        if ($wallet->balance < $amount) {
+            throw new RuntimeException('Insufficient wallet balance.');
+        }
+
+        return DB::transaction(function () use ($user, $plan, $amount, $wallet) {
+
             // Debit wallet
-            $user->wallet->debit($amount, 'Investment in ' . $plan->name);
+            $wallet->balance -= $amount;
+            $wallet->save();
 
-            $dailyProfit = $plan->getDailyProfit($amount);
-            $totalProfit = $dailyProfit * $plan->duration_days;
-            $endDate = now()->addDays($plan->duration_days);
+            $projection = $this->calculator->project($amount, $plan);
+            $startDate  = now();
+            $endDate    = $startDate->copy()->addDays($plan->duration_days);
 
             $investment = Investment::create([
-                'user_id' => $user->id,
-                'plan_id' => $plan->id,
-                'amount' => $amount,
-                'daily_profit' => $dailyProfit,
-                'total_projected_profit' => $totalProfit,
-                'remaining_days' => $plan->duration_days,
-                'status' => Investment::STATUS_ACTIVE,
-                'start_date' => now(),
-                'end_date' => $endDate,
-                'last_accrued_at' => now(),
-                'auto_reinvest' => $autoReinvest,
-                'compound_type' => $compoundType,
-                'early_withdrawal_penalty' => $plan->early_withdrawal_penalty,
-                'max_cycles' => $plan->max_reinvestment_cycles ?? 1,
-                'current_cycle' => 1,
+                'user_id'                => $user->id,
+                'plan_id'                => $plan->id,
+                'amount'                 => $amount,
+                'daily_profit'           => $projection['daily_profit'],
+                'total_projected_profit' => $projection['total_profit'],
+                'remaining_days'         => $plan->duration_days,
+                'status'                 => 'active',
+                'start_date'             => $startDate,
+                'end_date'               => $endDate,
+                'last_accrued_at'        => $startDate,
             ]);
 
-            return $investment;
+            Transaction::create([
+                'user_id'       => $user->id,
+                'wallet_id'     => $wallet->id,
+                'type'          => 'investment',
+                'amount'        => -$amount,
+                'balance_after' => $wallet->balance,
+                'description'   => "Investment in {$plan->name}",
+                'reference'     => 'INV-' . $investment->id,
+                'status'        => 'completed',
+            ]);
+
+            Log::info('Investment created', [
+                'user_id' => $user->id,
+                'plan_id' => $plan->id,
+                'amount'  => $amount,
+            ]);
+
+            return $investment->fresh(['plan', 'user']);
         });
     }
 
     /**
-     * Accrue daily profit for an investment.
+     * Credit daily interest for a single investment.
      */
-    public function accrueProfit(Investment $investment)
+    public function accrue(Investment $investment): bool
     {
-        if ($investment->status !== Investment::STATUS_ACTIVE) {
-            return false;
-        }
+        if ($investment->status !== 'active') return false;
+        if ($investment->last_accrued_at && $investment->last_accrued_at->isToday()) return false;
 
         return DB::transaction(function () use ($investment) {
-            $profit = $investment->daily_profit;
+            $wallet = $investment->user->wallet;
+            if (!$wallet) return false;
 
-            if ($investment->compound_type === 'reinvest') {
-                // Reinvest: add to investment amount (increase principal)
-                $investment->increment('amount', $profit);
-                $investment->increment('total_projected_profit', $profit);
-                // Recalculate daily profit based on new amount
-                $newDailyProfit = $investment->plan->getDailyProfit($investment->amount);
-                $investment->daily_profit = $newDailyProfit;
-                $investment->save();
-            } else {
-                // Daily payout: credit to wallet
-                $investment->user->wallet->credit($profit, 'Daily profit from ' . $investment->plan->name, 'interest');
-            }
+            $wallet->balance += $investment->daily_profit;
+            $wallet->save();
 
-            $investment->remaining_days--;
+            $investment->remaining_days = max(0, $investment->remaining_days - 1);
             $investment->last_accrued_at = now();
-
-            // Check if completed
-            if ($investment->remaining_days <= 0) {
-                $investment->status = Investment::STATUS_COMPLETED;
-                // Auto‑reinvest logic if enabled and cycles remain
-                if ($investment->auto_reinvest && $investment->current_cycle < $investment->max_cycles) {
-                    $this->autoReinvest($investment);
-                }
+            if ($investment->remaining_days === 0) {
+                $investment->status = 'completed';
             }
             $investment->save();
+
+            Transaction::create([
+                'user_id'       => $investment->user_id,
+                'wallet_id'     => $wallet->id,
+                'type'          => 'interest',
+                'amount'        => $investment->daily_profit,
+                'balance_after' => $wallet->balance,
+                'description'   => "Daily interest · {$investment->plan_name}",
+                'reference'     => 'INT-' . $investment->id . '-' . now()->format('Ymd'),
+                'status'        => 'completed',
+            ]);
 
             return true;
         });
     }
 
     /**
-     * Auto‑reinvest upon maturity.
+     * Accrue interest for all active investments (used by scheduler).
      */
-    public function autoReinvest(Investment $oldInvestment)
+    public function accrueAll(): int
     {
-        // Create a new investment with the same plan and the matured amount (principal + profit)
-        $newAmount = $oldInvestment->amount + $oldInvestment->total_projected_profit;
-        $newCycle = $oldInvestment->current_cycle + 1;
-
-        $newInvestment = $this->create(
-            $oldInvestment->user,
-            $oldInvestment->plan,
-            $newAmount,
-            $oldInvestment->auto_reinvest,
-            $oldInvestment->compound_type
-        );
-        $newInvestment->current_cycle = $newCycle;
-        $newInvestment->save();
-
-        // Optionally link the old investment to the new one (not required)
-        return $newInvestment;
+        $count = 0;
+        Investment::active()
+            ->where(function ($q) {
+                $q->whereNull('last_accrued_at')
+                  ->orWhere('last_accrued_at', '<', now()->startOfDay());
+            })
+            ->chunkById(100, function ($list) use (&$count) {
+                foreach ($list as $inv) {
+                    if ($this->accrue($inv)) $count++;
+                }
+            });
+        return $count;
     }
 }

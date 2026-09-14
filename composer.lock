@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0d2160b646b4f4583737d9a2e2733572",
+    "content-hash": "751418d2c71f1697b313e88718c967d1",
     "packages": [
         {
             "name": "barryvdh/laravel-dompdf",
@@ -1926,16 +1926,16 @@
         },
         {
             "name": "laravel/reverb",
-            "version": "v1.10.0",
+            "version": "v1.11.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/reverb.git",
-                "reference": "a9c2b24ba455d0b2c22bb2851c15ba1adcb75240"
+                "reference": "52ce5fd88cd1d7eacfdcf6b91cea4704cc546f27"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/reverb/zipball/a9c2b24ba455d0b2c22bb2851c15ba1adcb75240",
-                "reference": "a9c2b24ba455d0b2c22bb2851c15ba1adcb75240",
+                "url": "https://api.github.com/repos/laravel/reverb/zipball/52ce5fd88cd1d7eacfdcf6b91cea4704cc546f27",
+                "reference": "52ce5fd88cd1d7eacfdcf6b91cea4704cc546f27",
                 "shasum": ""
             },
             "require": {
@@ -1999,9 +1999,9 @@
             ],
             "support": {
                 "issues": "https://github.com/laravel/reverb/issues",
-                "source": "https://github.com/laravel/reverb/tree/v1.10.0"
+                "source": "https://github.com/laravel/reverb/tree/v1.11.1"
             },
-            "time": "2026-03-29T14:51:57+00:00"
+            "time": "2026-08-06T14:48:58+00:00"
         },
         {
             "name": "laravel/sanctum",

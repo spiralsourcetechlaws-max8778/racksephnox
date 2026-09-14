@@ -5,57 +5,69 @@ namespace App\Services\Investment;
 use App\Models\Investment;
 use App\Models\InvestmentPlan;
 use App\Models\User;
-use App\Events\InvestmentCreated;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 
 class InvestmentManager
 {
-    protected $calculator;
+    protected InvestmentService $service;
+    protected InterestCalculator $calculator;
 
-    public function __construct(InterestCalculator $calculator)
+    public function __construct(InvestmentService $service, InterestCalculator $calculator)
     {
+        $this->service    = $service;
         $this->calculator = $calculator;
     }
 
-    /**
-     * Create a new investment
-     */
-    public function create(User $user, InvestmentPlan $plan, $amount)
+    public function getActivePlans(): Collection
     {
-        if ($amount < $plan->min_amount || $amount > $plan->max_amount) {
-            throw new \InvalidArgumentException('Amount outside allowed range');
-        }
+        return InvestmentPlan::active()->orderBy('min_amount')->get();
+    }
 
-        if ($user->wallet->balance < $amount) {
-            throw new \InvalidArgumentException('Insufficient balance');
-        }
+    public function getPlanStats(InvestmentPlan $plan): array
+    {
+        return [
+            'investors'      => $plan->investor_count,
+            'total_invested' => $plan->total_invested,
+            'roi_percent'    => $plan->roi_percent,
+            'duration_days'  => $plan->duration_days,
+            'rate_percent'   => $plan->daily_interest_rate,
+        ];
+    }
 
-        return DB::transaction(function () use ($user, $plan, $amount) {
-            // Debit user wallet
-            $user->wallet->debit($amount, 'Investment in ' . $plan->name);
+    public function getUserInvestments(User $user): Collection
+    {
+        return Investment::with('plan')
+            ->forUser($user->id)
+            ->latest()
+            ->get()
+            ->filter(fn ($i) => $i->plan !== null)
+            ->values();
+    }
 
-            $dailyProfit = $this->calculator->calculateDailyProfit($amount, $plan);
-            $totalProfit = $this->calculator->calculateTotalProfit($amount, $plan);
-            $endDate = $this->calculator->calculateEndDate(now(), $plan->duration_days);
+    public function getUserStats(User $user): array
+    {
+        $investments = $this->getUserInvestments($user);
 
-            $investment = Investment::create([
-                'user_id' => $user->id,
-                'plan_id' => $plan->id,
-                'amount' => $amount,
-                'daily_profit' => $dailyProfit,
-                'total_projected_profit' => $totalProfit,
-                'remaining_days' => $plan->duration_days,
-                'status' => Investment::STATUS_ACTIVE,
-                'start_date' => now(),
-                'end_date' => $endDate,
-                'last_accrued_at' => now(),
-            ]);
+        $invested = $investments->sum('amount');
+        $profit   = $investments->sum('profit_credited');
 
-            event(new InvestmentCreated($investment));
-            $user->notify(new AppNotificationsInvestmentCreated($investment));
-            $user->notify(new AppNotificationsInvestmentCreated($investment));
+        return [
+            'total_invested'    => (float) $invested,
+            'total_profit'      => (float) $profit,
+            'active_count'      => $investments->where('status', 'active')->count(),
+            'completed_count'   => $investments->where('status', 'completed')->count(),
+            'projected_profit'  => (float) $investments->where('status', 'active')->sum('total_projected_profit'),
+            'roi'               => $invested > 0 ? round(($profit / $invested) * 100, 2) : 0,
+        ];
+    }
 
-            return $investment;
-        });
+    public function invest(User $user, InvestmentPlan $plan, float $amount): Investment
+    {
+        return $this->service->create($user, $plan, $amount);
+    }
+
+    public function preview(float $amount, InvestmentPlan $plan): array
+    {
+        return $this->calculator->project($amount, $plan);
     }
 }

@@ -114,6 +114,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/preferences', [NotificationController::class, 'updatePreferences'])->name('preferences.update');
     });
 
+
+    // ==================== LOANS DOMAIN ====================
+    Route::prefix('loans')->name('loans.')->group(function () {
+        Route::get('/', [App\Http\Controllers\LoanController::class, 'index'])->name('index');
+        Route::get('/apply/{product}', [App\Http\Controllers\LoanController::class, 'create'])->name('apply');
+        Route::post('/apply/{product}', [App\Http\Controllers\LoanController::class, 'store'])->name('store');
+        Route::post('/preview/{product}', [App\Http\Controllers\LoanController::class, 'preview'])->name('preview');
+        Route::get('/{loan}', [App\Http\Controllers\LoanController::class, 'show'])->name('show');
+        Route::post('/{loan}/repay', [App\Http\Controllers\LoanController::class, 'repay'])->name('repay');
+        Route::post('/{loan}/cancel', [App\Http\Controllers\LoanController::class, 'cancel'])->name('cancel');
+    });
+
     // Machines (web)
     Route::prefix('machines')->name('machines.')->group(function () {
         Route::get('/', [MachineController::class, 'index'])->name('index');
@@ -123,4 +135,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{investment}/early-withdraw', [MachineController::class, 'earlyWithdraw'])->name('early-withdraw');
         Route::get('/status/{investment}', [MachineController::class, 'status'])->name('status');
     });
+});
+
+/* ==================== TRADING ROUTES ==================== */
+// NOTE: these are already inside the auth+verified group.
+Route::prefix('trading')->name('trading.')->group(function () {
+    Route::get('/',                    [App\Http\Controllers\TradingController::class, 'index'])->name('index');
+    Route::post('/buy',                [App\Http\Controllers\TradingController::class, 'buy'])->name('buy');
+    Route::post('/sell',               [App\Http\Controllers\TradingController::class, 'sell'])->name('sell');
+    Route::post('/orders/{order}/cancel', [App\Http\Controllers\TradingController::class, 'cancelOrder'])->name('cancel');
+    Route::get('/order-book',          [App\Http\Controllers\TradingController::class, 'orderBook'])->name('order-book');
+    Route::get('/candles/{interval?}', [App\Http\Controllers\TradingController::class, 'candles'])->name('candles');
 });
