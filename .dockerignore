@@ -1,15 +1,90 @@
-.env
+# ═══════════════════════════════════════════════════════════════
+#  R A C K S E P H N O X   ·   . d o c k e r i g n o r e
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Version control ───
 .git
 .gitignore
+.gitattributes
+.github/
+
+# ─── Dependencies (rebuilt inside container) ───
+node_modules
+vendor
+composer.lock
+package-lock.json
+yarn.lock
+
+# ─── Environment & secrets ───
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# ─── Build outputs ───
+public/build
+public/hot
+public/storage
+
+# ─── Storage & cache ───
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*
+!storage/.gitkeep
+!bootstrap/cache/.gitkeep
+
+# ─── Database ───
+database/*.sqlite
+database/*.sqlite-*
+database/*.db
+
+# ─── Migration backups ───
+backup_migrations/
+
+# ─── IDE & editors ───
+.idea
+.vscode
+.fleet
+*.swp
+*.swo
+*~
+
+# ─── OS junk ───
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ─── Testing & coverage ───
+tests/
+phpunit.xml
+.phpunit.cache/
+coverage/
+
+# ─── Documentation ───
+*.md
+!README.md
+docs/
+
+# ─── Legacy / backups ───
+*.bak
+*.backup
+*.old
+README8778wins.md
+machinesframework.txt
+
+# ─── Docker & CI artifacts ───
 Dockerfile
 .dockerignore
-fly.toml
+docker-compose*.yml
 docker/
-storage/
-vendor/
-node_modules/
-tests/
-.phpunit.cache
+fly.toml
+railway.json
+
+# ─── Local scripts ───
 *.log
-*.sqlite
-*.pid
+scripts/local-*.sh
+setup-local.sh
