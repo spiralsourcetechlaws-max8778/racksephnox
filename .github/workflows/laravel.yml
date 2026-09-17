@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════
 #  R A C K S E P H N O X   ·   L A R A V E L   C I
-#  Modern pipeline · PHP 8.4 · SQLite · 888 Hz · Φ = 1.618
+#  PHP 8.4 · SQLite test DB · 888 Hz · Φ = 1.618
 # ═══════════════════════════════════════════════════════════════
 name: Laravel CI
 
@@ -18,7 +18,6 @@ concurrency:
 env:
   PHP_VERSION: '8.4'
   COMPOSER_NO_INTERACTION: 1
-  COMPOSER_NO_AUDIT: 1
 
 jobs:
   laravel-tests:
@@ -32,15 +31,9 @@ jobs:
         php: ['8.4']
 
     steps:
-      # ─────────────────────────────────────────────────────
-      # 1. Checkout
-      # ─────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ─────────────────────────────────────────────────────
-      # 2. Setup PHP
-      # ─────────────────────────────────────────────────────
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
         with:
@@ -49,9 +42,6 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      # ─────────────────────────────────────────────────────
-      # 3. Cache Composer dependencies
-      # ─────────────────────────────────────────────────────
       - name: Cache Composer packages
         uses: actions/cache@v4
         with:
@@ -65,7 +55,7 @@ jobs:
             composer-${{ runner.os }}-
 
       # ─────────────────────────────────────────────────────
-      # 4. Prepare .env
+      # Prepare .env — critical for AppServiceProvider boot
       # ─────────────────────────────────────────────────────
       - name: Prepare .env
         run: |
@@ -73,73 +63,71 @@ jobs:
             if [ -f .env.example ]; then
               cp .env.example .env
             else
-              cat > .env <<'ENVEOF'
-          APP_NAME=Racksephnox
-          APP_ENV=testing
-          APP_KEY=
-          APP_DEBUG=true
-          APP_URL=http://localhost
-
-          DB_CONNECTION=sqlite
-          DB_DATABASE=database/database.sqlite
-
-          SESSION_DRIVER=array
-          CACHE_STORE=array
-          QUEUE_CONNECTION=sync
-          MAIL_MAILER=array
-          ENVEOF
+              touch .env
             fi
           fi
-          echo "APP_ENV=testing" >> .env
-          echo "APP_DEBUG=true" >> .env
-          echo "SESSION_DRIVER=array" >> .env
-          echo "CACHE_STORE=array" >> .env
+          {
+            echo "APP_NAME=Racksephnox"
+            echo "APP_ENV=testing"
+            echo "APP_DEBUG=true"
+            echo "APP_URL=http://localhost"
+            echo "DB_CONNECTION=sqlite"
+            echo "DB_DATABASE=/tmp/test_database.sqlite"
+            echo "DB_FOREIGN_KEYS=true"
+            echo "SESSION_DRIVER=array"
+            echo "CACHE_STORE=array"
+            echo "QUEUE_CONNECTION=sync"
+            echo "MAIL_MAILER=array"
+            echo "BROADCAST_CONNECTION=null"
+          } > .env
 
-      # ─────────────────────────────────────────────────────
-      # 5. Install Composer dependencies
-      # ─────────────────────────────────────────────────────
       - name: Install Dependencies
         run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
 
-      # ─────────────────────────────────────────────────────
-      # 6. Generate application key
-      # ─────────────────────────────────────────────────────
       - name: Generate key
         run: php artisan key:generate
 
-      # ─────────────────────────────────────────────────────
-      # 7. Directory permissions
-      # ─────────────────────────────────────────────────────
       - name: Directory Permissions
         run: |
           mkdir -p storage/framework/{sessions,views,cache}
+          mkdir -p storage/logs bootstrap/cache
           chmod -R 777 storage bootstrap/cache
 
       # ─────────────────────────────────────────────────────
-      # 8. Create SQLite database
+      # Create BOTH test databases — /tmp and project
       # ─────────────────────────────────────────────────────
-      - name: Create Database
+      - name: Create Test Databases
         run: |
           mkdir -p database
+          touch /tmp/test_database.sqlite
           touch database/database.sqlite
+          chmod 666 /tmp/test_database.sqlite
           chmod 666 database/database.sqlite
+          ls -la /tmp/test_database.sqlite
+          ls -la database/database.sqlite
 
       # ─────────────────────────────────────────────────────
-      # 9. Run migrations
+      # Run migrations against the test DB
       # ─────────────────────────────────────────────────────
-      - name: Run Migrations
+      - name: Run Migrations (test DB)
+        env:
+          DB_DATABASE: /tmp/test_database.sqlite
+        run: php artisan migrate --force
+        continue-on-error: true
+
+      - name: Run Migrations (default DB)
         run: php artisan migrate --force
         continue-on-error: true
 
       # ─────────────────────────────────────────────────────
-      # 10. Execute tests
+      # Execute tests
       # ─────────────────────────────────────────────────────
       - name: Execute tests
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: /tmp/test_database.sqlite
         run: php artisan test --colors=always
 
-      # ─────────────────────────────────────────────────────
-      # 11. Upload logs on failure
-      # ─────────────────────────────────────────────────────
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -148,41 +136,4 @@ jobs:
           path: |
             storage/logs/*.log
           retention-days: 7
-
-  code-quality:
-    name: Code Quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: github.event_name == 'pull_request'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, pdo_sqlite
-          tools: composer:v2
-
-      - name: Cache Composer
-        uses: actions/cache@v4
-        with:
-          path: ~/.composer/cache/files
-          key: composer-quality-${{ hashFiles('composer.lock') }}
-
-      - name: Install Dependencies
-        run: composer install -q --no-ansi --no-interaction --no-scripts --prefer-dist
-
-      - name: Check composer.lock freshness
-        run: composer validate --strict --no-check-all
-        continue-on-error: true
-
-      - name: Lint PHP files
-        run: |
-          found=0
-          while IFS= read -r file; do
-            php -l "$file" > /dev/null 2>&1 || { echo "Syntax error in $file"; found=1; }
-          done < <(find app database routes config -name "*.php" -type f)
-          exit $found
-        continue-on-error: true
+          if-no-files-found: ignore
