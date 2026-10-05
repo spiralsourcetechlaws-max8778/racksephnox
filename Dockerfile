@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════
 #  R A C K S E P H N O X   ·   D O C K E R F I L E
-#  Laravel 13 · PHP 8.4 · SQLite · 888 Hz · Φ = 1.618
-#  Multi-stage · amd64 + arm64 · Production-ready
+#  Laravel 13 · PHP 8.4 · Nginx + PHP-FPM · 888 Hz · Φ = 1.618
+#  Optimized for Render.com deployment
 # ═══════════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────────────────────
@@ -11,18 +11,16 @@ FROM composer:2 AS vendor
 
 WORKDIR /app
 
-# Copy only composer files first (better layer caching)
 COPY composer.json composer.lock ./
 
-# Install production dependencies without scripts
-# (scripts need the full app which isn't copied yet)
 RUN composer install \
     --no-dev \
     --no-interaction \
     --no-scripts \
     --prefer-dist \
     --optimize-autoloader \
-    --ignore-platform-reqs
+    --ignore-platform-reqs \
+    --no-autoloader
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 2 — Frontend asset builder (Node 20)
@@ -40,20 +38,22 @@ COPY tailwind.config.js ./
 COPY resources ./resources
 COPY public ./public
 
-RUN npm run build || true
+RUN npm run build
 
 # ─────────────────────────────────────────────────────────────
-# STAGE 3 — Final runtime (PHP 8.4 FPM Alpine)
+# STAGE 3 — Production runtime (Nginx + PHP-FPM)
 # ─────────────────────────────────────────────────────────────
 FROM php:8.4-fpm-alpine AS runtime
 
-# ── Install system dependencies + PHP extensions in one layer ──
+# ── System dependencies + PHP extensions ──
 RUN apk add --no-cache \
         bash \
         curl \
         git \
         unzip \
         zip \
+        nginx \
+        supervisor \
         sqlite \
         sqlite-dev \
         libpng-dev \
@@ -62,10 +62,12 @@ RUN apk add --no-cache \
         oniguruma-dev \
         libxml2-dev \
         icu-dev \
+        postgresql-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         pdo \
         pdo_sqlite \
+        pdo_pgsql \
         bcmath \
         ctype \
         fileinfo \
@@ -82,15 +84,27 @@ RUN apk add --no-cache \
         oniguruma-dev \
         libxml2-dev \
         icu-dev \
-        sqlite-dev
+        sqlite-dev \
+        postgresql-dev
 
 # ── PHP production config ──
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
-COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini 2>/dev/null || true
+# ── Nginx config ──
+COPY docker/nginx.conf /etc/nginx/nginx.conf
 
-# ── Set working directory ──
-WORKDIR /var/www
+# ── Supervisor config ──
+COPY docker/supervisord.conf /etc/supervisord.conf
+
+# ── OPcache config ──
+RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.memory_consumption=256" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.max_accelerated_files=20000" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.validate_timestamps=0" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.save_comments=1" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.fast_shutdown=1" >> /usr/local/etc/php/conf.d/opcache.ini
+
+WORKDIR /var/www/html
 
 # ── Copy application code ──
 COPY . .
@@ -99,7 +113,10 @@ COPY . .
 COPY --from=vendor /app/vendor ./vendor
 
 # ── Copy built frontend assets from stage 2 ──
-COPY --from=frontend /app/public/build ./public/build 2>/dev/null || true
+COPY --from=frontend /app/public/build ./public/build
+
+# ── Generate optimized autoloader ──
+RUN composer dump-autoload --optimize --classmap-authoritative
 
 # ── Set permissions ──
 RUN mkdir -p \
@@ -108,22 +125,23 @@ RUN mkdir -p \
         storage/framework/cache/data \
         storage/logs \
         bootstrap/cache \
+        /var/log/nginx \
+        /var/log/supervisor \
     && chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
-
-# ── Enable OPcache for production ──
-RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/opcache.ini \
-    && echo "opcache.memory_consumption=256" >> /usr/local/etc/php/conf.d/opcache.ini \
-    && echo "opcache.max_accelerated_files=20000" >> /usr/local/etc/php/conf.d/opcache.ini \
-    && echo "opcache.validate_timestamps=0" >> /usr/local/etc/php/conf.d/opcache.ini
-
-# ── Expose FastCGI port ──
-EXPOSE 9000
-
-# ── Health check ──
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD php-fpm -t || exit 1
+    && chmod -R 775 storage bootstrap/cache \
+    && ln -sf /dev/stdout /var/log/nginx/access.log \
+    && ln -sf /dev/stderr /var/log/nginx/error.log
 
 # ── Entrypoint ──
-USER www-data
-CMD ["php-fpm"]
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# ── Expose Render's default port ──
+EXPOSE 10000
+
+# ── Health check ──
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:10000/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

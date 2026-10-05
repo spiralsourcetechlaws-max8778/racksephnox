@@ -1,34 +1,25 @@
 # ═══════════════════════════════════════════════════════════════
-#  R A C K S E P H N O X   ·   . d o c k e r i g n o r e
+#  RACKSEPHNOX · Docker Build Ignore
 # ═══════════════════════════════════════════════════════════════
 
-# ─── Version control ───
+# Version control
 .git
 .gitignore
 .gitattributes
+
+# CI/CD
 .github/
 
-# ─── Dependencies (rebuilt inside container) ───
+# Dependencies (rebuilt inside container)
 node_modules
 vendor
-composer.lock
-package-lock.json
-yarn.lock
 
-# ─── Environment & secrets ───
+# Environment secrets
 .env
 .env.*
 !.env.example
-*.pem
-*.key
-*.crt
 
-# ─── Build outputs ───
-public/build
-public/hot
-public/storage
-
-# ─── Storage & cache ───
+# Storage & cache
 storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
@@ -37,15 +28,17 @@ bootstrap/cache/*
 !storage/.gitkeep
 !bootstrap/cache/.gitkeep
 
-# ─── Database ───
+# Database (rebuild via migrations)
 database/*.sqlite
 database/*.sqlite-*
 database/*.db
 
-# ─── Migration backups ───
-backup_migrations/
+# Build artifacts (rebuilt inside container)
+public/build
+public/hot
+public/storage
 
-# ─── IDE & editors ───
+# IDE & editors
 .idea
 .vscode
 .fleet
@@ -53,38 +46,38 @@ backup_migrations/
 *.swo
 *~
 
-# ─── OS junk ───
+# OS junk
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# ─── Testing & coverage ───
+# Testing & coverage
 tests/
 phpunit.xml
 .phpunit.cache/
 coverage/
 
-# ─── Documentation ───
+# Documentation
+docs/
 *.md
 !README.md
-docs/
 
-# ─── Legacy / backups ───
+# Legacy backups
 *.bak
 *.backup
 *.old
-README8778wins.md
-machinesframework.txt
+backup_migrations/
 
-# ─── Docker & CI artifacts ───
+# Docker files
 Dockerfile
 .dockerignore
 docker-compose*.yml
-docker/
-fly.toml
-railway.json
 
-# ─── Local scripts ───
-*.log
+# Local scripts
 scripts/local-*.sh
 setup-local.sh
+
+# Misc
+*.log
+.fly.toml
+railway.json
