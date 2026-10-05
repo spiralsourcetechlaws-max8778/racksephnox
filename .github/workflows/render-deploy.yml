@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════════
+#  RACKSEPHNOX · Auto-Deploy to Render
+#  Triggers Render deploy hook on push to spiral branch
+# ═══════════════════════════════════════════════════════════════
+name: Deploy to Render
+
+on:
+  push:
+    branches: [spiral, main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests Before Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_sqlite, pdo_pgsql, bcmath, ctype, fileinfo, json, tokenizer, xml, curl, zip, gd, intl
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env || touch .env
+          php artisan key:generate
+          mkdir -p database
+          touch database/database.sqlite
+          chmod 666 database/database.sqlite
+
+      - name: Run migrations
+        run: php artisan migrate --force
+
+      - name: Run tests
+        run: php artisan test --colors=always
+
+  deploy:
+    name: Trigger Render Deploy
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/spiral' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy via Render Hook
+        run: |
+          echo "🚀 Triggering Render deploy..."
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
+            -H "Accept: application/json" \
+            --fail \
+            --silent \
+            --show-error
+          echo ""
+          echo "✅ Deploy triggered. Watch: https://dashboard.render.com"
+
+      - name: Summary
+        run: |
+          echo "### ✅ Deployment Triggered" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
