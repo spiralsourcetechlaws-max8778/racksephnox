@@ -1,15 +1,9 @@
-# ═══════════════════════════════════════════════════════════════
-#  RACKSEPHNOX · Render.com Blueprint
-#  Infrastructure as Code — one-click deploy
-# ═══════════════════════════════════════════════════════════════
-
 services:
-  # ─── Web Service (Docker) ───
   - type: web
     name: racksephnox
     runtime: docker
-    plan: starter                # Change to "free" for free tier
-    region: frankfurt            # Closest to Kenya
+    plan: starter
+    region: frankfurt
     branch: spiral
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -32,6 +26,8 @@ services:
         value: Africa/Nairobi
       - key: LOG_CHANNEL
         value: stack
+      - key: LOG_STACK
+        value: stderr
       - key: LOG_LEVEL
         value: warning
       - key: DB_CONNECTION
@@ -60,32 +56,3 @@ services:
       name: racksephnox-data
       mountPath: /var/www/html/database
       sizeGB: 1
-
-# ═══════════════════════════════════════════════════════════════
-#  NOTES:
-#
-#  1. FREE TIER (no persistent disk):
-#     - Change `plan: starter` → `plan: free`
-#     - Remove the entire `disk:` block
-#     - Add: DB_CONNECTION=pgsql + DATABASE_URL=<neon/supabase url>
-#     - Data will reset on every deploy (ephemeral storage)
-#
-#  2. PAID TIER (persistent disk, recommended for production):
-#     - Keep `plan: starter` (or higher)
-#     - Keep the `disk:` block
-#     - Data survives restarts and deploys
-#     - Cost: ~$7/month + $0.25/GB disk
-#
-#  3. To use PostgreSQL instead of SQLite:
-#     - Add a PostgreSQL service below (uncomment)
-#     - Set DB_CONNECTION=pgsql
-#     - DATABASE_URL auto-wires via fromDatabase
-# ═══════════════════════════════════════════════════════════════
-
-# ─── Optional: Managed PostgreSQL ───
-# databases:
-#   - name: racksephnox-db
-#     plan: free
-#     region: frankfurt
-#     databaseName: racksephnox
-#     user: racksephnox

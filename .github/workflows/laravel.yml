@@ -1,14 +1,10 @@
-# ═══════════════════════════════════════════════════════════════
-#  R A C K S E P H N O X   ·   L A R A V E L   C I
-#  PHP 8.4 · SQLite test DB · 888 Hz · Φ = 1.618
-# ═══════════════════════════════════════════════════════════════
 name: Laravel CI
 
 on:
   push:
-    branches: [ main, spiral, develop ]
+    branches: [main, spiral, develop]
   pull_request:
-    branches: [ main, spiral, develop ]
+    branches: [main, spiral, develop]
   workflow_dispatch:
 
 concurrency:
@@ -20,7 +16,7 @@ env:
   COMPOSER_NO_INTERACTION: 1
 
 jobs:
-  laravel-tests:
+  tests:
     name: Laravel Tests (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -31,41 +27,28 @@ jobs:
         php: ['8.4']
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mbstring, pdo, pdo_sqlite, sqlite3, bcmath, ctype, fileinfo, json, tokenizer, xml, curl, zip, gd, intl
+          extensions: mbstring, pdo, pdo_sqlite, pdo_pgsql, sqlite3, bcmath, ctype, fileinfo, json, tokenizer, xml, curl, zip, gd, intl
           coverage: none
           tools: composer:v2
 
-      - name: Cache Composer packages
+      - name: Cache Composer
         uses: actions/cache@v4
         with:
           path: |
             ~/.composer/cache/files
-            ~/.cache/composer/files
             vendor
-          key: composer-${{ runner.os }}-php-${{ matrix.php }}-${{ hashFiles('composer.lock', 'composer.json') }}
-          restore-keys: |
-            composer-${{ runner.os }}-php-${{ matrix.php }}-
-            composer-${{ runner.os }}-
+          key: composer-${{ runner.os }}-php-${{ matrix.php }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php-${{ matrix.php }}-
 
-      # ─────────────────────────────────────────────────────
-      # Prepare .env — critical for AppServiceProvider boot
-      # ─────────────────────────────────────────────────────
       - name: Prepare .env
         run: |
-          if [ ! -f .env ]; then
-            if [ -f .env.example ]; then
-              cp .env.example .env
-            else
-              touch .env
-            fi
-          fi
+          [ -f .env ] || cp .env.example .env 2>/dev/null || touch .env
           {
             echo "APP_NAME=Racksephnox"
             echo "APP_ENV=testing"
@@ -73,18 +56,16 @@ jobs:
             echo "APP_URL=http://localhost"
             echo "DB_CONNECTION=sqlite"
             echo "DB_DATABASE=/tmp/test_database.sqlite"
-            echo "DB_FOREIGN_KEYS=true"
             echo "SESSION_DRIVER=array"
             echo "CACHE_STORE=array"
             echo "QUEUE_CONNECTION=sync"
             echo "MAIL_MAILER=array"
-            echo "BROADCAST_CONNECTION=null"
           } > .env
 
       - name: Install Dependencies
-        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+        run: composer install --no-interaction --prefer-dist --no-scripts
 
-      - name: Generate key
+      - name: Generate Key
         run: php artisan key:generate
 
       - name: Directory Permissions
@@ -93,47 +74,23 @@ jobs:
           mkdir -p storage/logs bootstrap/cache
           chmod -R 777 storage bootstrap/cache
 
-      # ─────────────────────────────────────────────────────
-      # Create BOTH test databases — /tmp and project
-      # ─────────────────────────────────────────────────────
-      - name: Create Test Databases
+      - name: Create Test Database
         run: |
-          mkdir -p database
           touch /tmp/test_database.sqlite
-          touch database/database.sqlite
           chmod 666 /tmp/test_database.sqlite
-          chmod 666 database/database.sqlite
-          ls -la /tmp/test_database.sqlite
-          ls -la database/database.sqlite
 
-      # ─────────────────────────────────────────────────────
-      # Run migrations against the test DB
-      # ─────────────────────────────────────────────────────
-      - name: Run Migrations (test DB)
-        env:
-          DB_DATABASE: /tmp/test_database.sqlite
+      - name: Run Migrations
         run: php artisan migrate --force
         continue-on-error: true
 
-      - name: Run Migrations (default DB)
-        run: php artisan migrate --force
-        continue-on-error: true
-
-      # ─────────────────────────────────────────────────────
-      # Execute tests
-      # ─────────────────────────────────────────────────────
-      - name: Execute tests
-        env:
-          DB_CONNECTION: sqlite
-          DB_DATABASE: /tmp/test_database.sqlite
+      - name: Execute Tests
         run: php artisan test --colors=always
 
-      - name: Upload logs on failure
+      - name: Upload Logs on Failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: laravel-logs-php-${{ matrix.php }}
-          path: |
-            storage/logs/*.log
+          path: storage/logs/*.log
           retention-days: 7
           if-no-files-found: ignore

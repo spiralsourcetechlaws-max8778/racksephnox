@@ -1,0 +1,58 @@
+version: 2
+
+updates:
+  - package-ecosystem: composer
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - composer
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      laravel:
+        patterns: ["laravel/*", "illuminate/*"]
+      symfony:
+        patterns: ["symfony/*"]
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      vite:
+        patterns: ["vite", "@vitejs/*", "laravel-vite-plugin"]
+      tailwind:
+        patterns: ["tailwindcss", "postcss", "autoprefixer"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(ci)"
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "chore(docker)"

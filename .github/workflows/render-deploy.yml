@@ -1,17 +1,13 @@
-# ═══════════════════════════════════════════════════════════════
-#  RACKSEPHNOX · Auto-Deploy to Render
-#  Triggers Render deploy hook on push to spiral branch
-# ═══════════════════════════════════════════════════════════════
 name: Deploy to Render
 
 on:
   push:
-    branches: [spiral, main]
+    branches: [main, spiral]
   workflow_dispatch:
 
 jobs:
   test:
-    name: Run Tests Before Deploy
+    name: Test Before Deploy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,18 +29,18 @@ jobs:
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --no-scripts
 
-      - name: Prepare environment
+      - name: Prepare Environment
         run: |
-          cp .env.example .env || touch .env
+          cp .env.example .env 2>/dev/null || touch .env
           php artisan key:generate
           mkdir -p database
           touch database/database.sqlite
           chmod 666 database/database.sqlite
 
-      - name: Run migrations
+      - name: Run Migrations
         run: php artisan migrate --force
 
-      - name: Run tests
+      - name: Run Tests
         run: php artisan test --colors=always
 
   deploy:
@@ -53,21 +49,20 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/spiral' || github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy via Render Hook
+      - name: Trigger Deploy Hook
         run: |
-          echo "🚀 Triggering Render deploy..."
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK secret not set — skipping"
+            exit 0
+          fi
           curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
             -H "Accept: application/json" \
-            --fail \
-            --silent \
-            --show-error
-          echo ""
-          echo "✅ Deploy triggered. Watch: https://dashboard.render.com"
+            --fail --silent --show-error
+          echo "✅ Deploy triggered"
 
       - name: Summary
         run: |
-          echo "### ✅ Deployment Triggered" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Render Deploy Triggered" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Actor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

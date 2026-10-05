@@ -1,18 +1,35 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+* text=auto eol=lf
 
-# PHP
-*.php diff=php
+*.php       text eol=lf
+*.blade.php text eol=lf
+*.js        text eol=lf
+*.css       text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.env*      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sh        text eol=lf
+.gitignore  text eol=lf
 
-# SQLite
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
 *.sqlite binary
-*.db binary
 
-# Images
-*.png binary
-*.jpg binary
-*.svg text
-
-# Lock files
-composer.lock linguist-generated=true
-package-lock.json linguist-generated=true
+*.php diff=php
+*.blade.php diff=html
+*.js diff=javascript
+*.json diff=json

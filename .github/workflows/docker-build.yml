@@ -1,18 +1,13 @@
-# ═══════════════════════════════════════════════════════════════
-#  R A C K S E P H N O X   ·   D O C K E R   B U I L D
-#  Built on GitHub Actions · 888 Hz · Φ = 1.61803398875
-# ═══════════════════════════════════════════════════════════════
 name: Docker Build & Push
 
 on:
   push:
-    branches: [ main, spiral, develop ]
+    branches: [main, spiral, develop]
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
-    branches: [ main ]
+    branches: [main, spiral]
   workflow_dispatch:
 
 env:
@@ -31,8 +26,7 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -48,7 +42,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Extract Metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -60,7 +54,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=888hz
 
-      - name: Build and push
+      - name: Build and Push
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -78,15 +72,5 @@ jobs:
           provenance: true
           sbom: true
 
-      - name: Image digest
-        run: echo "Built image digest - ${{ steps.build.outputs.digest }}"
-
-      - name: Build summary
-        run: |
-          echo "### Docker Build Successful" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+      - name: Image Digest
+        run: echo "Digest - ${{ steps.build.outputs.digest }}"
