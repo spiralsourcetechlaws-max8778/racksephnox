@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════
-#  RACKSEPHNOX · DOCKERFILE (Debian-based · bulletproof)
-#  Laravel 13 · PHP 8.4 · Nginx + PHP-FPM
+#  RACKSEPHNOX · DOCKERFILE (SQLite Only)
+#  Laravel 13 · PHP 8.4 · Nginx + PHP-FPM · Debian Bookworm
 # ═══════════════════════════════════════════════════════════════
 
 # ─── Stage 1: Composer vendor ───
@@ -26,10 +26,9 @@ COPY resources ./resources
 COPY public ./public
 RUN npm run build
 
-# ─── Stage 3: Runtime (Debian Bookworm) ───
+# ─── Stage 3: Runtime ───
 FROM php:8.4-fpm-bookworm AS runtime
 
-# Install system deps + PHP extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash \
         curl \
@@ -46,15 +45,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxml2-dev \
         libzip-dev \
         libicu-dev \
-        libpq-dev \
         libsqlite3-dev \
         ca-certificates \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
         pdo \
         pdo_sqlite \
-        pdo_mysql \
-        pdo_pgsql \
         bcmath \
         ctype \
         fileinfo \
@@ -68,40 +64,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Config files
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
-# PHP production config
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 WORKDIR /var/www/html
 
-# Application code
 COPY . .
 COPY --from=vendor /app/vendor ./vendor
 COPY --from=frontend /app/public/build ./public/build
 
-# Optimized autoloader
 RUN composer dump-autoload --optimize --classmap-authoritative
 
-# Permissions
 RUN mkdir -p \
         storage/framework/sessions \
         storage/framework/views \
         storage/framework/cache/data \
         storage/logs \
         bootstrap/cache \
+        database \
         /var/log/nginx \
         /var/log/supervisor \
         /run \
-    && chown -R www-data:www-data storage bootstrap/cache /run \
-    && chmod -R 775 storage bootstrap/cache \
+    && touch database/database.sqlite \
+    && chown -R www-data:www-data storage bootstrap/cache database /run \
+    && chmod -R 775 storage bootstrap/cache database \
+    && chmod 666 database/database.sqlite \
     && ln -sf /dev/stdout /var/log/nginx/access.log \
     && ln -sf /dev/stderr /var/log/nginx/error.log
 
-# Entrypoint
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
