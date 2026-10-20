@@ -1,17 +1,22 @@
 # ═══════════════════════════════════════════════════════════════
-#  RACKSEPHNOX · DOCKERFILE
-#  Laravel 13 · PHP 8.4 · Alpine · Nginx + PHP-FPM
+#  RACKSEPHNOX · DOCKERFILE (Debian-based · bulletproof)
+#  Laravel 13 · PHP 8.4 · Nginx + PHP-FPM
 # ═══════════════════════════════════════════════════════════════
 
-# ─── Stage 1: Vendor ───
+# ─── Stage 1: Composer vendor ───
 FROM composer:2 AS vendor
 WORKDIR /app
 COPY composer.json composer.lock ./
 RUN composer install \
-    --no-dev --no-interaction --no-scripts --prefer-dist \
-    --optimize-autoloader --ignore-platform-reqs --no-autoloader
+    --no-dev \
+    --no-interaction \
+    --no-scripts \
+    --prefer-dist \
+    --optimize-autoloader \
+    --ignore-platform-reqs \
+    --no-autoloader
 
-# ─── Stage 2: Frontend ───
+# ─── Stage 2: Frontend build ───
 FROM node:20-alpine AS frontend
 WORKDIR /app
 COPY package.json package-lock.json* ./
@@ -21,21 +26,29 @@ COPY resources ./resources
 COPY public ./public
 RUN npm run build
 
-# ─── Stage 3: Runtime ───
-FROM php:8.4-fpm-alpine AS runtime
+# ─── Stage 3: Runtime (Debian Bookworm) ───
+FROM php:8.4-fpm-bookworm AS runtime
 
-# Build dependencies (installed first, removed after extensions compiled)
-RUN apk add --no-cache --virtual .build-deps \
-        $PHPIZE_DEPS \
+# Install system deps + PHP extensions
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash \
+        curl \
+        git \
+        unzip \
+        zip \
+        nginx \
+        supervisor \
+        sqlite3 \
         libpng-dev \
-        libjpeg-turbo-dev \
-        freetype-dev \
-        oniguruma-dev \
+        libjpeg62-turbo-dev \
+        libfreetype6-dev \
+        libonig-dev \
         libxml2-dev \
-        icu-dev \
-        postgresql-dev \
-        sqlite-dev \
-        linux-headers \
+        libzip-dev \
+        libicu-dev \
+        libpq-dev \
+        libsqlite3-dev \
+        ca-certificates \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
         pdo \
@@ -51,26 +64,9 @@ RUN apk add --no-cache --virtual .build-deps \
         gd \
         intl \
         opcache \
-    && apk del .build-deps
-
-# Runtime libraries only
-RUN apk add --no-cache \
-        bash \
-        curl \
-        git \
-        unzip \
         zip \
-        nginx \
-        supervisor \
-        sqlite \
-        libpng \
-        libjpeg-turbo \
-        freetype \
-        oniguruma \
-        libxml2 \
-        icu-libs \
-        postgresql-libs \
-        sqlite-libs
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Config files
 COPY docker/nginx.conf /etc/nginx/nginx.conf
