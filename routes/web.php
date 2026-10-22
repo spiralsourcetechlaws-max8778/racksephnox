@@ -137,13 +137,3 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 });
 
-/* ==================== TRADING ROUTES ==================== */
-// NOTE: these are already inside the auth+verified group.
-Route::prefix('trading')->name('trading.')->group(function () {
-    Route::get('/',                    [App\Http\Controllers\TradingController::class, 'index'])->name('index');
-    Route::post('/buy',                [App\Http\Controllers\TradingController::class, 'buy'])->name('buy');
-    Route::post('/sell',               [App\Http\Controllers\TradingController::class, 'sell'])->name('sell');
-    Route::post('/orders/{order}/cancel', [App\Http\Controllers\TradingController::class, 'cancelOrder'])->name('cancel');
-    Route::get('/order-book',          [App\Http\Controllers\TradingController::class, 'orderBook'])->name('order-book');
-    Route::get('/candles/{interval?}', [App\Http\Controllers\TradingController::class, 'candles'])->name('candles');
-});
