@@ -36,6 +36,8 @@ COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensio
 # Install PHP extensions
 RUN install-php-extensions \
         pdo_sqlite \
+        pdo_pgsql \
+        pgsql \
         bcmath \
         ctype \
         fileinfo \
