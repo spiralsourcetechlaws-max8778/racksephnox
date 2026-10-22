@@ -66,6 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+COPY docker/php/99-production.ini /usr/local/etc/php/conf.d/99-production.ini
 
 # Use production PHP config
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
