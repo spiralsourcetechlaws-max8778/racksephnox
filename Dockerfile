@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-#  RACKSEPHNOX · DOCKERFILE (SQLite Only · Auto-deps)
+#  RACKSEPHNOX · DOCKERFILE (SQLite · Auto-deps · Fixed)
 #  Laravel 13 · PHP 8.4 · Nginx + PHP-FPM · Debian Bookworm
 # ═══════════════════════════════════════════════════════════════
 
@@ -13,8 +13,7 @@ RUN composer install \
     --no-scripts \
     --prefer-dist \
     --optimize-autoloader \
-    --ignore-platform-reqs \
-    --no-autoloader
+    --ignore-platform-reqs
 
 # ─── Stage 2: Frontend build ───
 FROM node:20-alpine AS frontend
@@ -29,10 +28,13 @@ RUN npm run build
 # ─── Stage 3: Runtime ───
 FROM php:8.4-fpm-bookworm AS runtime
 
+# Copy Composer binary from Stage 1 (fixes exit code 127)
+COPY --from=vendor /usr/bin/composer /usr/local/bin/composer
+
 # Use the reliable extension installer
 COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
 
-# Install all necessary extensions (dependencies are handled automatically)
+# Install all PHP extensions (dependencies handled automatically)
 RUN install-php-extensions \
         pdo_sqlite \
         bcmath \
@@ -46,7 +48,7 @@ RUN install-php-extensions \
         opcache \
         zip
 
-# Install system packages needed for the runtime (Nginx, Supervisor, etc.)
+# Install system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash \
         curl \
@@ -65,20 +67,24 @@ COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
-# Use the production PHP configuration
+# Use production PHP config
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 WORKDIR /var/www/html
 
 # Copy application code
 COPY . .
+
+# Copy vendor from Stage 1
 COPY --from=vendor /app/vendor ./vendor
+
+# Copy built frontend assets from Stage 2
 COPY --from=frontend /app/public/build ./public/build
 
-# Optimize the autoloader
-RUN composer dump-autoload --optimize --classmap-authoritative
+# Optimize autoloader (composer binary is now available)
+RUN composer dump-autoload --optimize --classmap-authoritative --no-scripts
 
-# Set permissions and create SQLite database file
+# Set permissions + create SQLite db
 RUN mkdir -p \
         storage/framework/sessions \
         storage/framework/views \
@@ -96,7 +102,7 @@ RUN mkdir -p \
     && ln -sf /dev/stdout /var/log/nginx/access.log \
     && ln -sf /dev/stderr /var/log/nginx/error.log
 
-# Copy the entrypoint script
+# Entrypoint
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
