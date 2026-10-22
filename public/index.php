@@ -1,5 +1,16 @@
 <?php
 
+// ═══════════════════════════════════════════════════════════════
+//  PRODUCTION SAFETY · Force errors to log, never to output
+//  This prevents "headers already sent" errors from deprecations
+//  and warnings breaking JSON/HTML responses in production.
+// ═══════════════════════════════════════════════════════════════
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE & ~E_STRICT);
+// ═══════════════════════════════════════════════════════════════
+
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 

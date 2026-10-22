@@ -1,6 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-#  RACKSEPHNOX · DOCKERFILE (SQLite · Auto-deps · Fixed)
-#  Laravel 13 · PHP 8.4 · Nginx + PHP-FPM · Debian Bookworm
+#  RACKSEPHNOX · DOCKERFILE (SQLite · Debian · Production)
 # ═══════════════════════════════════════════════════════════════
 
 # ─── Stage 1: Composer vendor ───
@@ -28,13 +27,13 @@ RUN npm run build
 # ─── Stage 3: Runtime ───
 FROM php:8.4-fpm-bookworm AS runtime
 
-# Copy Composer binary from Stage 1 (fixes exit code 127)
+# Copy Composer binary for autoloader generation
 COPY --from=vendor /usr/bin/composer /usr/local/bin/composer
 
-# Use the reliable extension installer
+# Use mlocati's extension installer for reliable build
 COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
 
-# Install all PHP extensions (dependencies handled automatically)
+# Install PHP extensions
 RUN install-php-extensions \
         pdo_sqlite \
         bcmath \
@@ -62,7 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy configuration files
+# Config files
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
@@ -73,19 +72,15 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 WORKDIR /var/www/html
 
-# Copy application code
+# Application code
 COPY . .
-
-# Copy vendor from Stage 1
 COPY --from=vendor /app/vendor ./vendor
-
-# Copy built frontend assets from Stage 2
 COPY --from=frontend /app/public/build ./public/build
 
-# Optimize autoloader (composer binary is now available)
+# Optimized autoloader
 RUN composer dump-autoload --optimize --classmap-authoritative --no-scripts
 
-# Set permissions + create SQLite db
+# Permissions + create SQLite
 RUN mkdir -p \
         storage/framework/sessions \
         storage/framework/views \
