@@ -1,53 +1,30 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 echo "🜂 Racksephnox starting..."
-echo "   Environment: ${APP_ENV:-production}"
+echo "   Environment: ${APP_ENV}"
 
-# ─── 1. Storage dirs + permissions ───
-mkdir -p /var/www/html/storage/framework/{sessions,views,cache/data} \
-         /var/www/html/storage/logs \
-         /var/www/html/bootstrap/cache \
-         /run
+# 1. Ensure SQLite database exists and permissions are correct
+mkdir -p database
+touch database/database.sqlite
+chown -R www-data:www-data database
+chmod 666 database/database.sqlite
 
-chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /run
-chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+# 2. Ensure storage directories are writable
+mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache/data storage/logs bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache
+chmod -R 775 storage bootstrap/cache
 
-# ─── 2. Ensure SQLite database file exists ───
-if [ "$DB_CONNECTION" = "sqlite" ] || [ -z "$DB_CONNECTION" ]; then
-    DB_FILE="${DB_DATABASE:-/var/www/html/database/database.sqlite}"
-    if [ ! -f "$DB_FILE" ]; then
-        echo "📂 Creating SQLite database at $DB_FILE"
-        mkdir -p "$(dirname "$DB_FILE")"
-        touch "$DB_FILE"
-        chown www-data:www-data "$DB_FILE"
-        chmod 666 "$DB_FILE"
-    fi
-fi
+# 3. Run migrations BEFORE starting the web server
+echo "🗃️  Running migrations..."
+php artisan migrate --force
 
-# ─── 3. Start web server first (so Render port scan passes) ───
+# 4. Cache configs for production speed
+echo "⚙️  Caching configs..."
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+# 5. Start Nginx and PHP-FPM (via supervisord)
 echo "🚀 Starting Nginx and PHP-FPM..."
-/usr/bin/supervisord -c /etc/supervisord.conf &
-SUPERVISOR_PID=$!
-
-# ─── 4. Run migrations in background (don't block port 10000) ───
-echo "🗃️  Running migrations in the background..."
-(
-    sleep 3
-    php /var/www/html/artisan migrate --force --no-interaction || true
-
-    if [ "${RUN_SEEDERS:-false}" = "true" ]; then
-        echo "🌱 Running seeders..."
-        php /var/www/html/artisan db:seed --force --no-interaction || true
-    fi
-
-    if [ -n "$APP_KEY" ]; then
-        echo "🔥 Warming caches..."
-        php /var/www/html/artisan config:cache || true
-        php /var/www/html/artisan route:cache  || true
-        php /var/www/html/artisan view:cache   || true
-    fi
-) &
-
-# ─── 5. Keep container alive ───
-wait $SUPERVISOR_PID
+exec /usr/bin/supervisord -c /etc/supervisord.conf
