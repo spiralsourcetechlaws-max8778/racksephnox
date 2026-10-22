@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-#  RACKSEPHNOX · DOCKERFILE (SQLite Only)
+#  RACKSEPHNOX · DOCKERFILE (SQLite Only · Auto-deps)
 #  Laravel 13 · PHP 8.4 · Nginx + PHP-FPM · Debian Bookworm
 # ═══════════════════════════════════════════════════════════════
 
@@ -29,27 +29,11 @@ RUN npm run build
 # ─── Stage 3: Runtime ───
 FROM php:8.4-fpm-bookworm AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash \
-        curl \
-        git \
-        unzip \
-        zip \
-        nginx \
-        supervisor \
-        sqlite3 \
-        libpng-dev \
-        libjpeg62-turbo-dev \
-        libfreetype6-dev \
-        libonig-dev \
-        libxml2-dev \
-        libzip-dev \
-        libicu-dev \
-        libsqlite3-dev \
-        ca-certificates \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" \
-        pdo \
+# Use the reliable extension installer
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
+
+# Install all necessary extensions (dependencies are handled automatically)
+RUN install-php-extensions \
         pdo_sqlite \
         bcmath \
         ctype \
@@ -60,24 +44,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gd \
         intl \
         opcache \
+        zip
+
+# Install system packages needed for the runtime (Nginx, Supervisor, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash \
+        curl \
+        git \
+        unzip \
         zip \
+        nginx \
+        supervisor \
+        sqlite3 \
+        ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy configuration files
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
+# Use the production PHP configuration
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 WORKDIR /var/www/html
 
+# Copy application code
 COPY . .
 COPY --from=vendor /app/vendor ./vendor
 COPY --from=frontend /app/public/build ./public/build
 
+# Optimize the autoloader
 RUN composer dump-autoload --optimize --classmap-authoritative
 
+# Set permissions and create SQLite database file
 RUN mkdir -p \
         storage/framework/sessions \
         storage/framework/views \
@@ -95,6 +96,7 @@ RUN mkdir -p \
     && ln -sf /dev/stdout /var/log/nginx/access.log \
     && ln -sf /dev/stderr /var/log/nginx/error.log
 
+# Copy the entrypoint script
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
