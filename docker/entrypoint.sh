@@ -21,9 +21,9 @@ php artisan migrate --force
 
 # 4. Cache configs for production speed
 echo "⚙️  Caching configs..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+# php artisan config:cache
+# php artisan route:cache
+# php artisan view:cache
 
 # 5. Start Nginx and PHP-FPM (via supervisord)
 echo "🚀 Starting Nginx and PHP-FPM..."
