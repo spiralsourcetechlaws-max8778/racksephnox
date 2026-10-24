@@ -49,29 +49,6 @@
             </div>
         </div>
         
-        <!-- Transfer Between Accounts -->
-        <div class="card-golden p-6 mb-10">
-            <h2 class="text-xl font-bold text-gold mb-4">Transfer Funds</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <form action="{{ route('trading.transfer') }}" method="POST" class="flex gap-2">
-                        @csrf
-                        <input type="hidden" name="direction" value="to_trading">
-                        <input type="number" name="amount" placeholder="Amount (KES)" class="input-golden flex-1" required>
-                        <button type="submit" class="btn-golden">Wallet → Trading</button>
-                    </form>
-                </div>
-                <div>
-                    <form action="{{ route('trading.transfer') }}" method="POST" class="flex gap-2">
-                        @csrf
-                        <input type="hidden" name="direction" value="to_wallet">
-                        <input type="number" name="amount" placeholder="Amount (KES)" class="input-golden flex-1" required>
-                        <button type="submit" class="btn-golden">Trading → Wallet</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-        
         <!-- Transaction Tabs -->
         <div class="card-golden p-6">
             <div class="border-b border-gold/30 mb-4">
