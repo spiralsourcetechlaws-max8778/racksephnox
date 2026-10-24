@@ -31,6 +31,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/mpesa/callback', [MpesaController::class, 'callback'])->name('api.mpesa.callback');
     Route::get('/crypto/prices', [CryptoController::class, 'prices']);
+    Route::get('/crypto/history', [CryptoController::class, 'history']);
+    Route::get('/crypto/market', [CryptoController::class, 'marketData']);
     Route::get('/machine/list', [MachineController::class, 'publicList']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
@@ -112,11 +114,7 @@ Route::prefix('v1')->group(function () {
         });
 
         // Crypto API
-        Route::prefix('crypto')->group(function () {
-            Route::get('/prices', [CryptoController::class, 'prices']);
-            Route::get('/history', [CryptoController::class, 'history']);
-            Route::get('/market', [CryptoController::class, 'marketData']);
-        });
+        
 
         // Notifications API
         Route::prefix('notifications')->group(function () {
