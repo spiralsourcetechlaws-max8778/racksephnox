@@ -23,6 +23,7 @@ COPY vite.config.js postcss.config.js tailwind.config.js ./
 COPY resources ./resources
 COPY public ./public
 RUN npm run build
+RUN cp -n public/build/.vite/manifest.json public/build/manifest.json 2>/dev/null || true
 
 # ─── Stage 3: Runtime ───
 FROM php:8.4-fpm-bookworm AS runtime

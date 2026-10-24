@@ -135,7 +135,7 @@ export default defineConfig({
         outDir: 'public/build',
         emptyOutDir: true,
         sourcemap: false,
-        manifest: true,
+        manifest: 'manifest.json',
         target: 'es2020',
         minify: 'esbuild',
         cssMinify: true,
