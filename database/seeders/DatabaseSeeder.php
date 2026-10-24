@@ -9,7 +9,6 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $seeders = [
-            // Reference data (FK-safe order)
             LotterySymbolSeeder::class,
             LotteryGameSeeder::class,
             LotteryAchievementSeeder::class,
@@ -17,14 +16,12 @@ class DatabaseSeeder extends Seeder
             LotteryBonusWheelSeeder::class,
             InvestmentPlanSeeder::class,
 
-            // Machine series — full detail (machines + machine_vips)
-            RXMachineSeeder::class,             // legacy: existing RX set
-            RXMachineSeriesSeeder::class,       // new: 7 RX, 200/500/800 ladder
+            RXMachineSeeder::class,
+            RXMachineSeriesSeeder::class,
             InvestmentMachineSeriesSeeder::class,
 
-            // Loan products — full detail
-            LoanProductSeeder::class,           // legacy: basic set
-            LoanProductSeriesSeeder::class,     // new: 6 real products
+            LoanProductSeeder::class,
+            LoanProductSeriesSeeder::class,
         ];
 
         $failed = [];
@@ -36,9 +33,7 @@ class DatabaseSeeder extends Seeder
             } catch (\Throwable $e) {
                 report($e);
                 $failed[] = $seeder;
-                $this->command->warn(
-                    "⚠️  {$seeder} — " . substr($e->getMessage(), 0, 240)
-                );
+                $this->command->warn("⚠️  {$seeder} — " . substr($e->getMessage(), 0, 240));
             }
         }
 
@@ -50,9 +45,6 @@ class DatabaseSeeder extends Seeder
                 $this->command->warn('  • ' . $s);
             }
             $this->command->warn('─────────────────────────────────────────────────');
-            $this->command->warn('Successful seeders already committed.');
-            $this->command->warn('Fix the failures above and redeploy.');
-            $this->command->warn('');
 
             throw new \RuntimeException(
                 count($failed) . ' seeder(s) failed — see warnings above'
