@@ -16,6 +16,7 @@ use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\GuideController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LegalPagesController;
+use App\Http\Controllers\MpesaController;
 use Illuminate\Support\Facades\Route;
 
 require __DIR__.'/auth.php';
@@ -92,13 +93,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Referrals
     Route::get('/referrals', [ReferralController::class, 'index'])->name('referrals');
 
-    // Deposit (web forms)
+    // Deposit (simple form — deposit.form/deposit.submit)
     Route::get('/deposit', [DepositController::class, 'form'])->name('deposit.form');
     Route::post('/deposit', [DepositController::class, 'submit'])->name('deposit.submit');
 
-    // Withdrawal (web forms)
+    // Withdrawal (simple form — withdrawal.form/withdrawal.submit)
     Route::get('/withdraw', [WithdrawalController::class, 'form'])->name('withdrawal.form');
     Route::post('/withdraw', [WithdrawalController::class, 'submit'])->name('withdrawal.submit');
+
+    // M-Pesa STK push deposit / B2C withdrawal
+    // FIX: wallet.blade.php already references route('mpesa.deposit') and
+    // route('mpesa.withdraw') — without these routes, /wallet throws
+    // RouteNotFoundException for any authenticated user.
+    // MpesaController methods exist: showDepositForm, initiateDeposit,
+    // showWithdrawalForm, initiateWithdrawal.
+    Route::prefix('mpesa')->name('mpesa.')->group(function () {
+        Route::get('/deposit', [MpesaController::class, 'showDepositForm'])->name('deposit');
+        Route::post('/deposit/initiate', [MpesaController::class, 'initiateDeposit'])->name('deposit.initiate');
+        Route::get('/withdraw', [MpesaController::class, 'showWithdrawalForm'])->name('withdraw');
+        Route::post('/withdraw/initiate', [MpesaController::class, 'initiateWithdrawal'])->name('withdraw.initiate');
+    });
 
     // Bank Accounts
     Route::resource('bank-accounts', BankAccountController::class)->except(['show']);
@@ -113,7 +127,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/preferences', [NotificationController::class, 'preferences'])->name('preferences');
         Route::post('/preferences', [NotificationController::class, 'updatePreferences'])->name('preferences.update');
     });
-
 
     // ==================== LOANS DOMAIN ====================
     Route::prefix('loans')->name('loans.')->group(function () {
@@ -136,4 +149,3 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/status/{investment}', [MachineController::class, 'status'])->name('status');
     });
 });
-
