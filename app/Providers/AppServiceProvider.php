@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\MachineInvestment;
+use App\Observers\MachineInvestmentObserver;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,51 +24,37 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-    // ... existing boot code ...
-    \App\Models\MachineInvestment::observe(\App\Observers\MachineInvestmentObserver::class);
-    
+        // ─────────────────────────────────────────────────────
+        // Model observers
+        // ─────────────────────────────────────────────────────
+        MachineInvestment::observe(MachineInvestmentObserver::class);
 
-    {
         // ─────────────────────────────────────────────────────
         // Safely seed a default trading pair ONLY if the table
         // exists and is empty. This prevents crashes during:
         //   · fresh installs before migrations have run
-        //   · CI test runs where the test DB is empty
-        //   · artisan commands that boot the app before DB setup
+        //   · cold boots where the DB isn't reachable yet
+        //   · misconfigured env during deploy
         // ─────────────────────────────────────────────────────
         $this->ensureDefaultTradingPair();
-
-        // Share common data with all views (guarded the same way)
-        View::composer('*', function ($view) {
-            // Add any view-shared variables here, guarded by Schema::hasTable
-            // Example:
-            // $view->with('siteName', config('app.name'));
-        });
     }
 
     /**
-     * Ensure a default trading pair exists, without crashing the app
-     * if the database or table isn't ready yet.
+     * Seed BTC/USDT pair if it doesn't exist. Silent no-op when the
+     * table is missing or the DB is unreachable — never blocks boot.
      */
-
-
-
-
-
     protected function ensureDefaultTradingPair(): void
     {
         try {
-            // Skip if migrations haven't run yet
             if (!Schema::hasTable('trading_pairs')) {
                 return;
             }
 
-            // Only create the default pair if none exists
-            if (\App\Models\TradingPair::query()->exists()) {
+            if (DB::table('trading_pairs')->count() > 0) {
                 return;
             }
 
-            \App\Models\TradingPair::create([
+            DB::table('trading_pairs')->insert([
                 'symbol'           => 'BTCUSDT',
                 'base_currency'    => 'BTC',
                 'quote_currency'   => 'USDT',
@@ -73,11 +62,14 @@ class AppServiceProvider extends ServiceProvider
                 'max_trade_amount' => 100,
                 'tick_size'        => 0.0001,
                 'is_active'        => true,
+                'created_at'       => now(),
+                'updated_at'       => now(),
             ]);
         } catch (\Throwable $e) {
-            // Never let boot-time failures break the app
-            logger()->warning('AppServiceProvider::ensureDefaultTradingPair failed', [
-                'message' => $e->getMessage(),
+            // Never let this block boot — log and move on
+            Log::warning('AppServiceProvider::ensureDefaultTradingPair failed', [
+                'exception' => get_class($e),
+                'message'   => $e->getMessage(),
             ]);
         }
     }

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Support\Facades\DB;
@@ -11,10 +10,6 @@ use Illuminate\Support\Str;
 
 class BonusService
 {
-    /**
-     * Credit a signup bonus to a newly registered user.
-     * Idempotent on (signup, user.id).
-     */
     public function creditSignupBonus(User $user): ?float
     {
         return $this->credit(
@@ -26,10 +21,6 @@ class BonusService
         );
     }
 
-    /**
-     * Credit a referral bonus to the REFERRER when a new user registers.
-     * Idempotent on (referral, referred.id) — one bonus per referral relationship.
-     */
     public function creditReferralBonus(User $referrer, User $referred): ?float
     {
         return $this->credit(
@@ -41,10 +32,6 @@ class BonusService
         );
     }
 
-    /**
-     * Credit a machine activation bonus to the investor.
-     * Idempotent on (machine_activation, machine_investment.id).
-     */
     public function creditMachineActivationBonus(User $user, $machine, int $investmentId): ?float
     {
         return $this->credit(
@@ -57,8 +44,9 @@ class BonusService
     }
 
     /**
-     * Core credit method. Returns amount credited, or null if skipped
-     * (already credited, or zero amount).
+     * Core credit. Uses Wallet::credit() which atomically increments the
+     * balance and creates the transaction (existing model helper). Adds
+     * the bonus_credits idempotency guard on top.
      */
     protected function credit(
         User $user,
@@ -73,7 +61,7 @@ class BonusService
 
         try {
             return DB::transaction(function () use ($user, $amount, $bonusType, $referenceId, $description) {
-                // Idempotency check via unique index
+                // Idempotency check (also enforced by unique index)
                 $already = DB::table('bonus_credits')
                     ->where('bonus_type', $bonusType)
                     ->where('reference_id', $referenceId)
@@ -89,23 +77,10 @@ class BonusService
                     ['balance' => 0, 'locked_balance' => 0]
                 );
 
-                // Credit
-                $wallet->balance = (float) $wallet->balance + $amount;
-                $wallet->save();
+                // Use existing Wallet::credit() — handles increment + transaction log
+                $wallet->credit($amount, $description, $bonusType . '_bonus');
 
-                // Log the transaction
-                Transaction::forceCreate([
-                    'user_id'       => $user->id,
-                    'wallet_id'     => $wallet->id,
-                    'type'          => $bonusType . '_bonus',
-                    'amount'        => $amount,
-                    'balance_after' => $wallet->balance,
-                    'description'   => $description,
-                    'reference'     => strtoupper($bonusType) . '-' . Str::ulid(),
-                    'status'        => 'completed',
-                ]);
-
-                // Record the bonus credit (idempotency guard)
+                // Record the idempotency guard row
                 DB::table('bonus_credits')->insert([
                     'user_id'      => $user->id,
                     'bonus_type'   => $bonusType,
@@ -120,7 +95,6 @@ class BonusService
                 return $amount;
             });
         } catch (\Throwable $e) {
-            // A unique constraint hit here means a race — treat as already credited
             if (str_contains($e->getMessage(), 'bonus_credits')) {
                 Log::info('Bonus already credited (race)', [
                     'user_id' => $user->id,
