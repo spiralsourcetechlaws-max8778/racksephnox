@@ -9,22 +9,51 @@ use Illuminate\Support\Facades\Hash;
 /**
  * BOOTSTRAP CORE TABLES
  *
- * Purpose: Render's PostgreSQL starts empty (no db-setup.sh equivalent).
- * The active migration set references tables that were originally created
- * via db-setup.sh raw SQL, not migrations. This migration idempotently
- * creates every missing foundational table, then seeds essential rows.
+ * Render's PostgreSQL starts empty (no db-setup.sh equivalent).
+ * The active migration set references tables / columns that were originally
+ * created via db-setup.sh raw SQL, not migrations. This migration
+ * idempotently creates every missing foundational table AND column, then
+ * seeds essential rows so the app boots.
  *
- * Runs FIRST (timestamp 2025-01-01) so all later foreign keys resolve.
+ * Runs FIRST (timestamp 2025-01-01) so all later FKs resolve.
  *
- * Safe on SQLite (local): every Schema::create is guarded by hasTable(),
- * so nothing changes locally.
+ * Safe on SQLite (local): every Schema::create / hasColumn is guarded, so
+ * nothing changes locally.
  */
 
 return new class extends Migration
 {
     public function up(): void
     {
-        // ─── 1. MACHINES ──────────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  0. USERS — add extended columns if missing
+        //     (0001_01_01_000000 created users with only the basics;
+        //      db-setup.sh later added these on SQLite.)
+        // ═══════════════════════════════════════════════════════
+        if (Schema::hasTable('users')) {
+            $addCols = [
+                'is_verified'               => fn(Blueprint $t) => $t->boolean('is_verified')->default(false),
+                'is_active'                 => fn(Blueprint $t) => $t->boolean('is_active')->default(true),
+                'kyc_status'                => fn(Blueprint $t) => $t->string('kyc_status', 32)->default('pending'),
+                'kyc_level'                 => fn(Blueprint $t) => $t->string('kyc_level', 32)->default('basic'),
+                'onboarding_completed'      => fn(Blueprint $t) => $t->boolean('onboarding_completed')->default(false),
+                'avatar'                    => fn(Blueprint $t) => $t->string('avatar')->nullable(),
+                'notification_preferences'  => fn(Blueprint $t) => $t->json('notification_preferences')->nullable(),
+                'free_spins_available'      => fn(Blueprint $t) => $t->integer('free_spins_available')->default(0),
+                'two_factor_secret'         => fn(Blueprint $t) => $t->text('two_factor_secret')->nullable(),
+                'two_factor_recovery_codes' => fn(Blueprint $t) => $t->text('two_factor_recovery_codes')->nullable(),
+                'two_factor_confirmed_at'   => fn(Blueprint $t) => $t->timestamp('two_factor_confirmed_at')->nullable(),
+            ];
+            foreach ($addCols as $name => $def) {
+                if (! Schema::hasColumn('users', $name)) {
+                    Schema::table('users', $def);
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  1. MACHINES
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('machines')) {
             Schema::create('machines', function (Blueprint $t) {
                 $t->id();
@@ -42,7 +71,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 2. MACHINE VIPs ──────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  2. MACHINE VIPs
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('machine_vips')) {
             Schema::create('machine_vips', function (Blueprint $t) {
                 $t->id();
@@ -57,7 +88,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 3. TRADING PAIRS ─────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  3. TRADING PAIRS
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('trading_pairs')) {
             Schema::create('trading_pairs', function (Blueprint $t) {
                 $t->id();
@@ -74,7 +107,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 4. TRADING ACCOUNTS ──────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  4. TRADING ACCOUNTS
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('trading_accounts')) {
             Schema::create('trading_accounts', function (Blueprint $t) {
                 $t->id();
@@ -89,7 +124,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 5. TRADING PROFILES ──────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  5. TRADING PROFILES
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('trading_profiles')) {
             Schema::create('trading_profiles', function (Blueprint $t) {
                 $t->id();
@@ -109,7 +146,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 6. TRADING CANDLES ───────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  6. TRADING CANDLES
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('trading_candles')) {
             Schema::create('trading_candles', function (Blueprint $t) {
                 $t->id();
@@ -127,7 +166,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 7. BTC PRICE HISTORY ─────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  7. BTC PRICE HISTORY
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('btc_price_history')) {
             Schema::create('btc_price_history', function (Blueprint $t) {
                 $t->id();
@@ -139,7 +180,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 8. WALLETS ───────────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  8. WALLETS
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('wallets')) {
             Schema::create('wallets', function (Blueprint $t) {
                 $t->id();
@@ -153,7 +196,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 9. TRANSACTIONS ──────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  9. TRANSACTIONS
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('transactions')) {
             Schema::create('transactions', function (Blueprint $t) {
                 $t->id();
@@ -172,7 +217,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 10. KYC DOCUMENTS ────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  10. KYC DOCUMENTS
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('kyc_documents')) {
             Schema::create('kyc_documents', function (Blueprint $t) {
                 $t->id();
@@ -187,7 +234,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 11. CRYPTO PRICES ────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  11. CRYPTO PRICES
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('crypto_prices')) {
             Schema::create('crypto_prices', function (Blueprint $t) {
                 $t->id();
@@ -200,7 +249,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 12. AUDIT LOGS ───────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  12. AUDIT LOGS
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('audit_logs')) {
             Schema::create('audit_logs', function (Blueprint $t) {
                 $t->id();
@@ -216,7 +267,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 13. LOTTERY TOURNAMENTS ──────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  13. LOTTERY TOURNAMENTS
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('lottery_tournaments')) {
             Schema::create('lottery_tournaments', function (Blueprint $t) {
                 $t->id();
@@ -230,7 +283,9 @@ return new class extends Migration
             });
         }
 
-        // ─── 14. PERSONAL ACCESS TOKENS (Sanctum) ─────────────────
+        // ═══════════════════════════════════════════════════════
+        //  14. PERSONAL ACCESS TOKENS (Sanctum)
+        // ═══════════════════════════════════════════════════════
         if (! Schema::hasTable('personal_access_tokens')) {
             Schema::create('personal_access_tokens', function (Blueprint $t) {
                 $t->id();
@@ -245,7 +300,7 @@ return new class extends Migration
         }
 
         // ═══════════════════════════════════════════════════════
-        //  SEED ESSENTIAL ROWS (idempotent)
+        //  SEEDS (idempotent)
         // ═══════════════════════════════════════════════════════
 
         if (Schema::hasTable('machines') && DB::table('machines')->count() === 0) {
@@ -307,7 +362,7 @@ return new class extends Migration
             }
         }
 
-        // Seed admin user for login
+        // Admin user — columns now exist thanks to step 0 above
         if (Schema::hasTable('users') && DB::table('users')->where('email', 'admin@racksephnox.com')->count() === 0) {
             DB::table('users')->insert([
                 'name' => 'Super Admin',
@@ -317,6 +372,7 @@ return new class extends Migration
                 'is_verified' => true,
                 'email_verified_at' => now(),
                 'kyc_status' => 'verified',
+                'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
