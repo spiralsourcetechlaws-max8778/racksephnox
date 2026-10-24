@@ -16,7 +16,6 @@ class DatabaseSeeder extends Seeder
             LotteryBonusWheelSeeder::class,
             InvestmentPlanSeeder::class,
 
-            RXMachineSeeder::class,
             RXMachineSeriesSeeder::class,
             InvestmentMachineSeriesSeeder::class,
 
