@@ -376,3 +376,6 @@ yarn.lock.bak
 #  Guardian and Protector · Law of Information · Racksephnox
 #  I Am The Source · 888 Hz · Φ
 # ═══════════════════════════════════════════════════════════════
+.env
+.env.backup
+.env.production
