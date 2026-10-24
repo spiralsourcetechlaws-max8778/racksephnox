@@ -3,6 +3,15 @@
 @section('content')
 <div x-data="walletManager()" x-init="init()" class="py-12">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="mb-6 rounded-lg border border-gold-400/40 bg-gradient-to-br from-gold-500/10 to-amber-500/5 p-5">
+            <p class="text-xs uppercase tracking-wider text-gold-300 mb-2">Deposit via M-Pesa</p>
+            <p class="text-xs text-ivory/50 mb-1">Pochi la Biashara</p>
+            <p class="font-mono text-xl font-bold text-gold-200 select-all mb-3">{{ config('mpesa.pochi_number') }}</p>
+            <p class="text-xs text-ivory/50 mb-1">Paybill &middot; Account</p>
+            <p class="text-base font-semibold text-gold-200"><span class="font-mono select-all">{{ config('mpesa.paybill_number') }}</span> &middot; <span class="font-mono select-all">{{ config('mpesa.paybill_account') }}</span></p>
+            <p class="text-xs text-ivory/60 mt-2">{{ config('mpesa.pochi_name') }}</p>
+        </div>
+
         
         <div class="text-center mb-12">
             <h1 class="text-4xl font-bold golden-title">Banking Center</h1>

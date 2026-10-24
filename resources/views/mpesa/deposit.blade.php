@@ -1,6 +1,15 @@
 @extends('layouts.app')
 
 @section('content')
+<div class="max-w-3xl mx-auto mt-6 px-4">
+<div class="rounded-lg border border-gold-400/40 bg-gradient-to-br from-gold-500/10 to-amber-500/5 p-4">
+<p class="text-xs uppercase tracking-wider text-gold-300 mb-1">Deposit via M-Pesa</p>
+<p class="text-xs text-ivory/50 mb-1">Pochi la Biashara</p>
+<p class="font-mono text-lg font-bold text-gold-200 select-all">{{ config('mpesa.pochi_number') }}</p>
+<p class="text-xs text-ivory/50 mt-2 mb-1">Paybill &middot; Account</p>
+<p class="text-sm font-semibold text-gold-200"><span class="font-mono select-all">{{ config('mpesa.paybill_number') }}</span> &middot; <span class="font-mono select-all">{{ config('mpesa.paybill_account') }}</span></p>
+</div>
+</div>
 <div x-data="depositManager()" x-init="init()" class="py-12">
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center mb-12">
