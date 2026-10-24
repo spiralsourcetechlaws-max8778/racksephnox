@@ -5,10 +5,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Persistent record of every seeder execution, per deploy.
- * Enables post-mortem queries like:
+ * Persistent audit trail for every seeder execution, across every deploy.
+ * Lets you query failures directly in Postgres without shell access:
  *   SELECT * FROM seed_runs WHERE status='failed' ORDER BY run_at DESC LIMIT 20;
- * After the fact, from prod — no shell required (query via a future admin route).
  */
 return new class extends Migration
 {
@@ -22,7 +21,7 @@ return new class extends Migration
             $t->id();
             $t->timestamp('run_at')->useCurrent();
             $t->string('seeder', 128);
-            $t->string('status', 16);                    // ok | failed | skipped
+            $t->string('status', 16);                    // ok | failed
             $t->string('target', 128)->nullable();       // machine code, row key, etc.
             $t->integer('duration_ms')->nullable();
             $t->text('error')->nullable();

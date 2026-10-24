@@ -14,7 +14,6 @@ trait RecordsSeedRuns
         ?int $durationMs = null,
         ?string $error = null
     ): void {
-        // Non-fatal — do not let a logging failure break the seeder
         try {
             if (!Schema::hasTable('seed_runs')) {
                 return;
@@ -33,7 +32,7 @@ trait RecordsSeedRuns
                 'updated_at'  => now(),
             ]);
         } catch (\Throwable $e) {
-            \Log::warning('seed_runs table write failed', ['original' => $e->getMessage()]);
+            \Log::warning('seed_runs write failed', ['original' => $e->getMessage()]);
         }
     }
 }
