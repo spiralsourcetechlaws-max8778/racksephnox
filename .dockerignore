@@ -1,11 +1,14 @@
 .env
 .env.*
 !.env.example
-database/database.sqlite
+
+database/*.sqlite
+database/*.sqlite-*
 storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+bootstrap/cache/*
 node_modules
 vendor
 .git
@@ -13,3 +16,4 @@ vendor
 site
 docs
 tests
+*.log
