@@ -10,4 +10,11 @@
 <input type="checkbox" name="terms" required> <label>I agree to the Terms</label>
 <button type="submit" class="w-full btn-golden">Register</button>
 </form></div>
+<div class="mt-4">
+    <label for="referral_code">Referral Code (optional)</label>
+    <input type="text" name="referral_code" id="referral_code"
+           value="{{ old('referral_code', $referral_code ?? '') }}"
+           class="input-golden w-full" placeholder="Enter a friend's code">
+</div>
 @endsection
+

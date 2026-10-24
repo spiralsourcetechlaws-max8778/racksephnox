@@ -21,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+    // ... existing boot code ...
+    \App\Models\MachineInvestment::observe(\App\Observers\MachineInvestmentObserver::class);
+    
+
+    {
         // ─────────────────────────────────────────────────────
         // Safely seed a default trading pair ONLY if the table
         // exists and is empty. This prevents crashes during:
@@ -42,6 +47,11 @@ class AppServiceProvider extends ServiceProvider
      * Ensure a default trading pair exists, without crashing the app
      * if the database or table isn't ready yet.
      */
+
+
+
+
+
     protected function ensureDefaultTradingPair(): void
     {
         try {

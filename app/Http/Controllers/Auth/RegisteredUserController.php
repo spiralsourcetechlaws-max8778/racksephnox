@@ -4,46 +4,68 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\BonusService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Illuminate\View\View;
 
 class RegisteredUserController extends Controller
 {
-    public function create(): View
+    public function __construct(protected BonusService $bonuses) {}
+
+    public function create(Request $request): View
     {
-        return view('auth.register');
+        // Preserve referral code from URL (?ref=CODE or ?referral_code=CODE)
+        // so it survives into the POST via a hidden field in the view.
+        $referral = $request->query('ref') ?? $request->query('referral_code');
+
+        return view('auth.register', ['referral_code' => $referral]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'name'          => ['required', 'string', 'max:255'],
+            'email'         => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
+            'password'      => ['required', 'confirmed', Rules\Password::defaults()],
+            'referral_code' => ['nullable', 'string', 'max:32'],
         ]);
 
-        // Two-step create — email_verified_at is NOT in User::$fillable,
-        // so passing it via User::create() gets silently dropped by the
-        // mass-assignment guard. Direct property assignment after create
-        // bypasses the guard.
+        // Resolve referrer (if any) from the submitted referral code
+        $referrer = null;
+        $submittedReferral = $request->input('referral_code')
+            ?? $request->query('ref')
+            ?? $request->query('referral_code');
+
+        if ($submittedReferral) {
+            $referrer = User::where('referral_code', strtoupper($submittedReferral))->first();
+        }
+
+        // Create user with own referral_code + referred_by (if applicable)
         $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
+            'name'          => $request->name,
+            'email'         => $request->email,
+            'password'      => Hash::make($request->password),
+            'referral_code' => strtoupper(Str::random(8)),
+            'referred_by'   => $referrer?->id,
         ]);
 
-        // Auto-verify: MAIL_MAILER=log means verification emails go to
-        // storage/logs/laravel.log, not the user's inbox. Without this,
-        // email_verified_at stays NULL forever. When real mail delivery
-        // is configured, remove these 2 lines and delete 'verified' from
-        // the /dashboard route middleware group.
+        // Verify email (auto, since MAIL_MAILER=log has no real sending)
         $user->email_verified_at = now();
         $user->save();
+
+        // Signup bonus
+        $this->bonuses->creditSignupBonus($user);
+
+        // Referral bonus to referrer
+        if ($referrer) {
+            $this->bonuses->creditReferralBonus($referrer, $user);
+        }
 
         event(new Registered($user));
 
