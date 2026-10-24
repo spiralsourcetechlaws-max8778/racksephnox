@@ -299,6 +299,67 @@ return new class extends Migration
             });
         }
 
+
+        // ═══════════════════════════════════════════════════════
+        //  15. LOTTERY BASE TABLES
+        //      These were created by migrations that are now in
+        //      migrations_backup_20260529_181643/ (never run).
+        //      upgrade_lottery_framework.php assumes they exist.
+        // ═══════════════════════════════════════════════════════
+        if (! Schema::hasTable('lottery_games')) {
+            Schema::create('lottery_games', function (Blueprint $t) {
+                $t->id();
+                $t->string('name');
+                $t->string('slug')->nullable();
+                $t->text('description')->nullable();
+                $t->boolean('is_active')->default(true);
+                $t->timestamps();
+            });
+        }
+
+        if (! Schema::hasTable('lottery_symbols')) {
+            Schema::create('lottery_symbols', function (Blueprint $t) {
+                $t->id();
+                $t->string('name');
+                $t->string('emoji', 16)->nullable();
+                $t->integer('weight')->default(1);
+                $t->timestamps();
+            });
+        }
+
+        if (! Schema::hasTable('lottery_payouts')) {
+            Schema::create('lottery_payouts', function (Blueprint $t) {
+                $t->id();
+                $t->unsignedBigInteger('game_id')->nullable();
+                $t->unsignedBigInteger('symbol_id')->nullable();
+                $t->integer('match_count')->default(3);
+                $t->decimal('multiplier', 10, 2)->default(0);
+                $t->timestamps();
+            });
+        }
+
+        if (! Schema::hasTable('lottery_spins')) {
+            Schema::create('lottery_spins', function (Blueprint $t) {
+                $t->id();
+                $t->unsignedBigInteger('user_id')->nullable();
+                $t->unsignedBigInteger('game_id')->nullable();
+                $t->decimal('bet_amount', 15, 2)->default(0);
+                $t->decimal('win_amount', 15, 2)->default(0);
+                $t->boolean('is_win')->default(false);
+                $t->timestamps();
+                $t->index('user_id');
+            });
+        }
+
+        if (! Schema::hasTable('lottery_achievements')) {
+            Schema::create('lottery_achievements', function (Blueprint $t) {
+                $t->id();
+                $t->string('name');
+                $t->text('description')->nullable();
+                $t->timestamps();
+            });
+        }
+
         // ═══════════════════════════════════════════════════════
         //  SEEDS (idempotent)
         // ═══════════════════════════════════════════════════════
