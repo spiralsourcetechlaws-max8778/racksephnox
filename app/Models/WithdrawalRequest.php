@@ -10,7 +10,14 @@ class WithdrawalRequest extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'amount', 'fee', 'net_amount', 'phone', 'status', 'admin_notes'
+        'user_id', 
+        'amount', 
+        'fee', 
+        'net_amount', 
+        'phone', 
+        'status', 
+        'admin_notes',
+        'bank_account_id' // <-- ADDED: This was missing and would break bank withdrawals
     ];
 
     protected $casts = [
@@ -22,5 +29,11 @@ class WithdrawalRequest extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    // Added relationship so the admin panel can see the bank details
+    public function bankAccount()
+    {
+        return $this->belongsTo(UserBankAccount::class, 'bank_account_id');
     }
 }

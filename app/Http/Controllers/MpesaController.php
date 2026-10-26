@@ -63,7 +63,7 @@ class MpesaController extends Controller
     {
         $request->validate([
             'phone' => 'required|string|regex:/^254[0-9]{9}$/',
-            'amount' => 'required|numeric|min:10',
+            'amount' => 'required|numeric|min:100',
         ]);
 
         $user = Auth::user();
