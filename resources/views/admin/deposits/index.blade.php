@@ -1,64 +1,31 @@
 @extends('admin.layouts.app')
-
 @section('content')
-<div class="admin-card p-6">
-    <h1 class="text-2xl font-bold text-gold mb-6">💰 Pending Deposit Requests</h1>
-    @if($pending->count())
-        <div class="overflow-x-auto">
-            <table class="min-w-full">
-                <thead class="bg-gold/10 border-b border-gold/30">
-                    <tr class="text-gold-400">
-                        <th class="px-4 py-2">User</th>
-                        <th class="px-4 py-2">Amount</th>
-                        <th class="px-4 py-2">Transaction Ref</th>
-                        <th class="px-4 py-2">Phone</th>
-                        <th class="px-4 py-2">Actions</th>
-                     </tr>
-                </thead>
-                <tbody>
-                    @foreach($pending as $deposit)
-                    <tr class="border-b border-gold/20">
-                        <td class="px-4 py-2">{{ $deposit->user->name }}<br><span class="text-xs">{{ $deposit->user->email }}</span></td>
-                        <td class="px-4 py-2">KES {{ number_format($deposit->amount, 2) }}</td>
-                        <td class="px-4 py-2">{{ $deposit->transaction_reference }}</td>
-                        <td class="px-4 py-2">{{ $deposit->phone_number }}</td>
-                        <td class="px-4 py-2 flex gap-2">
-                            <form method="POST" action="{{ route('admin.deposits.verify', $deposit) }}">
-                                @csrf
-                                <button type="submit" class="bg-green-600 text-white px-3 py-1 rounded text-sm">✅ Verify</button>
-                            </form>
-                            <button onclick="promptReject({{ $deposit->id }})" class="bg-red-600 text-white px-3 py-1 rounded text-sm">❌ Reject</button>
-                        </td>
-                    </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-        {{ $pending->links() }}
-    @else
-        <p class="text-center text-ivory/50 py-8">No pending deposits.</p>
-    @endif
+<h2 class="text-2xl font-bold text-white mb-6">Pending Deposits</h2>
+@if(session('success')) <div class="bg-green-500/20 text-green-400 p-3 rounded mb-4">{{ session('success') }}</div> @endif
+@if($errors->any()) <div class="bg-red-500/20 text-red-400 p-3 rounded mb-4">{{ $errors->first() }}</div> @endif
+
+<div class="bg-gray-900 rounded-lg shadow overflow-hidden border border-gray-800">
+    <table class="w-full text-left text-gray-300">
+        <thead class="bg-gray-800 text-gray-400 text-sm">
+            <tr><th class="p-4">User</th><th class="p-4">Amount</th><th class="p-4">Method</th><th class="p-4">Date</th><th class="p-4 text-right">Actions</th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-800">
+            @forelse($deposits as $deposit)
+            <tr>
+                <td class="p-4">{{ $deposit->user->name ?? 'Unknown' }}</td>
+                <td class="p-4 font-bold text-green-400">KES {{ number_format($deposit->amount, 2) }}</td>
+                <td class="p-4">{{ $deposit->payment_method ?? 'M-Pesa' }}</td>
+                <td class="p-4">{{ $deposit->created_at->format('M d, H:i') }}</td>
+                <td class="p-4 text-right flex gap-2 justify-end">
+                    <form method="POST" action="{{ route('admin.deposits.verify', $deposit) }}">@csrf <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm">Verify</button></form>
+                    <form method="POST" action="{{ route('admin.deposits.reject', $deposit) }}">@csrf <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">Reject</button></form>
+                </td>
+            </tr>
+            @empty
+            <tr><td colspan="5" class="p-6 text-center text-gray-500">No pending deposits.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
 </div>
-<script>
-function promptReject(id) {
-    let reason = prompt('Enter rejection reason:');
-    if (reason) {
-        let form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/admin/deposits/' + id + '/reject';
-        let csrf = document.createElement('input');
-        csrf.type = 'hidden';
-        csrf.name = '_token';
-        csrf.value = '{{ csrf_token() }}';
-        let reasonInput = document.createElement('input');
-        reasonInput.type = 'hidden';
-        reasonInput.name = 'reason';
-        reasonInput.value = reason;
-        form.appendChild(csrf);
-        form.appendChild(reasonInput);
-        document.body.appendChild(form);
-        form.submit();
-    }
-}
-</script>
+<div class="mt-4">{{ $deposits->links() }}</div>
 @endsection
