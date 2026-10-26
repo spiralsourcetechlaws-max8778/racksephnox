@@ -4,7 +4,7 @@
 <div x-data="adminDashboard()" x-init="init()" class="space-y-6">
 
     {{-- ==================== STATS CARDS ==================== --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
         <div class="admin-card p-5">
             <div class="flex justify-between">
                 <div>
@@ -26,7 +26,8 @@
             </div>
         </div>
 
-        <div class="admin-card p-5">
+        {{-- Clickable: Pending Deposits --}}
+        <a href="{{ route('admin.deposits.index') }}" class="admin-card p-5 hover:ring-2 hover:ring-gold/50 transition cursor-pointer block">
             <div class="flex justify-between">
                 <div>
                     <p class="text-sm text-gold-400">Pending Deposits</p>
@@ -35,9 +36,10 @@
                 </div>
                 <i class="fas fa-clock text-3xl text-gold/50"></i>
             </div>
-        </div>
+        </a>
 
-        <div class="admin-card p-5">
+        {{-- Clickable: Pending Withdrawals --}}
+        <a href="{{ route('admin.withdrawals.index') }}" class="admin-card p-5 hover:ring-2 hover:ring-gold/50 transition cursor-pointer block">
             <div class="flex justify-between">
                 <div>
                     <p class="text-sm text-gold-400">Pending Withdrawals</p>
@@ -46,7 +48,19 @@
                 </div>
                 <i class="fas fa-clock text-3xl text-gold/50"></i>
             </div>
-        </div>
+        </a>
+
+        {{-- Clickable: Pending KYC --}}
+        <a href="{{ route('admin.kyc.index') }}" class="admin-card p-5 hover:ring-2 hover:ring-gold/50 transition cursor-pointer block">
+            <div class="flex justify-between">
+                <div>
+                    <p class="text-sm text-gold-400">Pending KYC</p>
+                    <p class="text-3xl font-bold text-blue-400">{{ $stats['pending_kyc'] ?? 0 }}</p>
+                    <p class="text-xs text-gold-400">Docs to review</p>
+                </div>
+                <i class="fas fa-id-card text-3xl text-gold/50"></i>
+            </div>
+        </a>
     </div>
 
     {{-- ==================== LOANS DOMAIN CARDS ==================== --}}
@@ -82,7 +96,7 @@
     {{-- ==================== REVENUE TARGET ==================== --}}
     <div class="admin-card p-5">
         <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gold">💰 26‑Day Revenue Target</h3>
+            <h3 class="text-lg font-semibold text-gold"> 💰 26‑Day Revenue Target</h3>
             <span class="text-xs text-ivory/50">{{ $daysLeft }} days left</span>
         </div>
         <div class="flex justify-between items-baseline mb-2">
@@ -119,7 +133,7 @@
     {{-- ==================== RECENT LOANS ==================== --}}
     <div class="admin-card p-5">
         <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gold">💸 Recent Loan Applications</h3>
+            <h3 class="text-lg font-semibold text-gold"> 💸 Recent Loan Applications</h3>
             <a href="{{ route('admin.loans.index') }}" class="text-gold-400 text-sm hover:text-gold">View all →</a>
         </div>
         <div class="overflow-x-auto">
@@ -157,7 +171,7 @@
     {{-- ==================== RECENT ACTIVITY ==================== --}}
     <div class="admin-card p-5">
         <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gold">📋 Recent Platform Activity</h3>
+            <h3 class="text-lg font-semibold text-gold"> 📋 Recent Platform Activity</h3>
             <button @click="refreshStats" class="text-gold-400 hover:text-gold text-sm">
                 <i class="fas fa-sync-alt" :class="{'animate-spin': refreshing}"></i> Refresh
             </button>

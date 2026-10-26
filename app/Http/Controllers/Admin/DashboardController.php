@@ -39,6 +39,7 @@ class DashboardController extends Controller
             'total_machines'              => Machine::where('is_active', true)->count(),
             'rx0_active'                  => Machine::where('code', 'RX0')->where('is_active', true)->exists(),
             'new_users_today'             => User::whereDate('created_at', today())->count(),
+            'pending_kyc'                 => \App\Models\KycDocument::where('status', 'pending')->count(),
         ];
 
         /* ============================================================
