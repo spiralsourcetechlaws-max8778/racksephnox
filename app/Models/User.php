@@ -13,11 +13,12 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'email', 'phone', 'password', 'referral_code', 'referred_by', 'kyc_status', 'is_active',
+        'name', 'email', 'phone', 'password', 'referral_code', 'referred_by',
+        'kyc_status', 'is_active',
         'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at',
-        'is_admin', 'kyc_level', 'is_verified', 'onboarding_completed', 'avatar', 
-        'notification_preferences', 'free_spins_available',
-        'is_vip', 'has_promo', 'promo_expires_at', // VIP & Promo Fields
+        'is_admin', 'admin_role', 'kyc_level', 'is_verified', 'onboarding_completed',
+        'avatar', 'notification_preferences', 'free_spins_available',
+        'is_vip', 'has_promo', 'promo_expires_at',
     ];
 
     protected $hidden = [
@@ -37,36 +38,57 @@ class User extends Authenticatable
         'promo_expires_at' => 'datetime',
     ];
 
-    // ========== BOOT METHOD ==========
+    // ========== ROLE HELPERS ==========
+
+    public function hasRole(string ...$roles): bool
+    {
+        if (!$this->is_admin) return false;
+        $role = $this->admin_role ?? 'super_admin';
+        return empty($roles) || in_array($role, $roles);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->is_admin && ($this->admin_role === 'super_admin' || $this->admin_role === null);
+    }
+
+    public function isFinanceAdmin(): bool
+    {
+        return $this->is_admin && $this->admin_role === 'finance';
+    }
+
+    public function isSupportAdmin(): bool
+    {
+        return $this->is_admin && $this->admin_role === 'support';
+    }
+
+    public function getRoleLabelAttribute(): string
+    {
+        if (!$this->is_admin) return 'User';
+        return match ($this->admin_role ?? 'super_admin') {
+            'super_admin' => 'Super Admin',
+            'finance'     => 'Finance Admin',
+            'support'     => 'Support Admin',
+            default       => 'Admin',
+        };
+    }
+
+    // ========== BOOT ==========
 
     protected static function booted()
     {
         static::created(function ($user) {
-            // 1. ALWAYS generate a secure referral code first
             if (empty($user->referral_code)) {
                 $user->referral_code = strtoupper(Str::random(8));
-                $user->saveQuietly(); // Save without triggering events again
+                $user->saveQuietly();
             }
-
-            // 2. Create wallet if missing
             if (!$user->wallet) {
-                $wallet = $user->wallet()->create([
-                    'user_id' => $user->id,
-                    'balance' => 0,
-                ]);
+                $wallet = $user->wallet()->create(['user_id' => $user->id, 'balance' => 0]);
                 $wallet->credit(60, 'Welcome bonus');
             }
-
-            // 3. Create trading account
             if (!$user->tradingAccount) {
-                $user->tradingAccount()->create([
-                    'balance' => 0,
-                    'locked_balance' => 0,
-                    'btc_balance' => 0,
-                ]);
+                $user->tradingAccount()->create(['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0]);
             }
-
-            // 4. Create trading profile
             if (!$user->tradingProfile) {
                 $user->tradingProfile()->create([
                     'username' => 'trader_' . $user->id,
@@ -79,131 +101,37 @@ class User extends Authenticatable
 
     // ========== RELATIONSHIPS ==========
 
-    public function wallet()
-    {
-        return $this->hasOne(Wallet::class);
-    }
-
-    public function investments()
-    {
-        return $this->hasMany(Investment::class);
-    }
-
-    public function transactions()
-    {
-        return $this->hasMany(Transaction::class);
-    }
-
-    public function mpesaTransactions()
-    {
-        return $this->hasMany(MpesaTransaction::class);
-    }
-
-    public function kycDocuments()
-    {
-        return $this->hasMany(KycDocument::class);
-    }
-
-    public function auditLogs()
-    {
-        return $this->hasMany(AuditLog::class);
-    }
-
-    public function referrals()
-    {
-        return $this->hasMany(User::class, 'referred_by');
-    }
-
-    public function machineInvestments()
-    {
-        return $this->hasMany(MachineInvestment::class);
-    }
-
-    public function tradingAccount()
-    {
-        return $this->hasOne(TradingAccount::class);
-    }
-
-    public function tradeOrders()
-    {
-        return $this->hasMany(TradeOrder::class);
-    }
-
-    public function depositRequests()
-    {
-        return $this->hasMany(DepositRequest::class);
-    }
-
-    public function withdrawalRequests()
-    {
-        return $this->hasMany(WithdrawalRequest::class);
-    }
-
-    public function bankAccounts()
-    {
-        return $this->hasMany(UserBankAccount::class);
-    }
-
-    public function lotterySpins()
-    {
-        return $this->hasMany(LotterySpin::class);
-    }
-
-    public function lotteryAchievements()
-    {
+    public function wallet() { return $this->hasOne(Wallet::class); }
+    public function investments() { return $this->hasMany(Investment::class); }
+    public function transactions() { return $this->hasMany(Transaction::class); }
+    public function mpesaTransactions() { return $this->hasMany(MpesaTransaction::class); }
+    public function kycDocuments() { return $this->hasMany(KycDocument::class); }
+    public function auditLogs() { return $this->hasMany(AuditLog::class); }
+    public function referrals() { return $this->hasMany(User::class, 'referred_by'); }
+    public function machineInvestments() { return $this->hasMany(MachineInvestment::class); }
+    public function tradingAccount() { return $this->hasOne(TradingAccount::class); }
+    public function tradeOrders() { return $this->hasMany(TradeOrder::class); }
+    public function depositRequests() { return $this->hasMany(DepositRequest::class); }
+    public function withdrawalRequests() { return $this->hasMany(WithdrawalRequest::class); }
+    public function bankAccounts() { return $this->hasMany(UserBankAccount::class); }
+    public function lotterySpins() { return $this->hasMany(LotterySpin::class); }
+    public function lotteryAchievements() {
         return $this->belongsToMany(LotteryAchievement::class, 'lottery_user_achievements')
-                    ->withPivot('achieved_at')
-                    ->withTimestamps();
+                    ->withPivot('achieved_at')->withTimestamps();
     }
-
-    public function tradingProfile()
-    {
-        return $this->hasOne(TradingProfile::class);
-    }
-
-    public function followedTraders()
-    {
+    public function tradingProfile() { return $this->hasOne(TradingProfile::class); }
+    public function followedTraders() {
         return $this->belongsToMany(User::class, 'followed_traders', 'follower_id', 'trader_id')
-                    ->withPivot('copy_ratio', 'auto_copy', 'max_copy_amount')
-                    ->withTimestamps();
+                    ->withPivot('copy_ratio', 'auto_copy', 'max_copy_amount')->withTimestamps();
     }
-
-    public function followers()
-    {
+    public function followers() {
         return $this->belongsToMany(User::class, 'followed_traders', 'trader_id', 'follower_id')
-                    ->withPivot('copy_ratio', 'auto_copy', 'max_copy_amount')
-                    ->withTimestamps();
+                    ->withPivot('copy_ratio', 'auto_copy', 'max_copy_amount')->withTimestamps();
     }
-
-    public function tradingBonusTracker()
-    {
-        return $this->hasOne(\App\Models\TradingBonusTracker::class);
-    }
-
-    /* ---------- Loans Domain ---------- */
-    
-    public function loans()
-    {
-        return $this->hasMany(Loan::class);
-    }
-
-    public function activeLoans()
-    {
-        return $this->hasMany(Loan::class)->where('status', 'active');
-    }
-
-    public function loanRepayments()
-    {
-        return $this->hasMany(LoanRepayment::class);
-    }
-
-    public function guaranteedLoans()
-    {
-        return $this->hasMany(LoanGuarantor::class);
-    }
-
-    public function loanCreditScore()
-    {
-        return $this->hasOne(LoanCreditScore::class);
-    }
+    public function tradingBonusTracker() { return $this->hasOne(\App\Models\TradingBonusTracker::class); }
+    public function loans() { return $this->hasMany(Loan::class); }
+    public function activeLoans() { return $this->hasMany(Loan::class)->where('status', 'active'); }
+    public function loanRepayments() { return $this->hasMany(LoanRepayment::class); }
+    public function guaranteedLoans() { return $this->hasMany(LoanGuarantor::class); }
+    public function loanCreditScore() { return $this->hasOne(LoanCreditScore::class); }
 }

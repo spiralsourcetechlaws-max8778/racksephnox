@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // is missing here, it throws 'Target class [x] does not exist'.
         $middleware->alias([
             'admin'            => \App\Http\Middleware\Admin::class,
+            'role'             => \App\Http\Middleware\CheckRole::class,
             'onboarding'       => \App\Http\Middleware\Onboarding::class,
             'two-factor'       => \App\Http\Middleware\TwoFactor::class,
             'api.throttle'     => \App\Http\Middleware\ApiThrottle::class,
