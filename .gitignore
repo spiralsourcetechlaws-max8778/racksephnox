@@ -379,3 +379,4 @@ yarn.lock.bak
 .env
 .env.backup
 .env.production
+public/hot
