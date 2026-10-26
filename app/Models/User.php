@@ -14,8 +14,9 @@ class User extends Authenticatable
     protected $fillable = [
         'name', 'email', 'phone', 'password', 'referral_code', 'referred_by', 'kyc_status', 'is_active',
         'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at',
-        'is_admin', 'kyc_level', 'is_verified', 'onboarding_completed',
-        'avatar', 'notification_preferences', 'free_spins_available'
+        'is_admin', 'kyc_level', 'is_verified', 'onboarding_completed', 'avatar', 
+        'notification_preferences', 'free_spins_available',
+        'is_vip', 'has_promo', 'promo_expires_at' // Added
     ];
 
     protected $hidden = [
@@ -30,8 +31,11 @@ class User extends Authenticatable
         'onboarding_completed' => 'boolean',
         'notification_preferences' => 'array',
         'free_spins_available' => 'integer',
-    ];
-
+        'is_vip' => 'boolean', // Added
+        'has_promo' => 'boolean', // Added
+        'promo_expires_at' => 'datetime', // Added
+    ];                                                                  
+    
     // ========== RELATIONSHIPS ==========
 
     public function wallet()
@@ -69,13 +73,11 @@ class User extends Authenticatable
         return $this->hasMany(User::class, 'referred_by');
     }
 
-    // Machine investments
     public function machineInvestments()
     {
         return $this->hasMany(MachineInvestment::class);
     }
 
-    // Trading
     public function tradingAccount()
     {
         return $this->hasOne(TradingAccount::class);
@@ -86,7 +88,6 @@ class User extends Authenticatable
         return $this->hasMany(TradeOrder::class);
     }
 
-    // Deposit & withdrawal
     public function depositRequests()
     {
         return $this->hasMany(DepositRequest::class);
@@ -102,7 +103,6 @@ class User extends Authenticatable
         return $this->hasMany(UserBankAccount::class);
     }
 
-    // Lottery
     public function lotterySpins()
     {
         return $this->hasMany(LotterySpin::class);
@@ -115,7 +115,6 @@ class User extends Authenticatable
                     ->withTimestamps();
     }
 
-    // Social trading
     public function tradingProfile()
     {
         return $this->hasOne(TradingProfile::class);
@@ -135,8 +134,6 @@ class User extends Authenticatable
                     ->withTimestamps();
     }
 
-    // ========== BOOT METHOD ==========
-
     public function tradingBonusTracker()
     {
         return $this->hasOne(\App\Models\TradingBonusTracker::class);
@@ -154,7 +151,6 @@ class User extends Authenticatable
                 $user->save();
                 $wallet->credit(60, 'Welcome bonus');
             }
-            // Create trading account
             if (!$user->tradingAccount) {
                 $user->tradingAccount()->create([
                     'balance' => 0,
@@ -162,7 +158,6 @@ class User extends Authenticatable
                     'btc_balance' => 0,
                 ]);
             }
-            // Create trading profile
             if (!$user->tradingProfile) {
                 $user->tradingProfile()->create([
                     'username' => 'trader_' . $user->id,
@@ -173,7 +168,6 @@ class User extends Authenticatable
         });
     }
 
-    /* ---------- Loans Domain ---------- */
     public function loans()
     {
         return $this->hasMany(Loan::class);
@@ -198,5 +192,4 @@ class User extends Authenticatable
     {
         return $this->hasOne(LoanCreditScore::class);
     }
-
 }
