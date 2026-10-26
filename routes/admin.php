@@ -24,6 +24,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::post('users/{user}/toggle-admin', [UserController::class, 'toggleAdmin'])->name('users.toggle-admin');
     Route::post('users/{user}/toggle-vip', [UserController::class, 'toggleVip'])->name('users.toggle-vip');
     Route::post('users/{user}/toggle-promo', [UserController::class, 'togglePromo'])->name('users.toggle-promo');
+    Route::post('users/{user}/adjust-wallet', [AppHttpControllersAdminWalletController::class, 'adjust'])->name('users.adjust-wallet');
     Route::post('users/export', [UserController::class, 'export'])->name('users.export');
 
     // Investment Plans

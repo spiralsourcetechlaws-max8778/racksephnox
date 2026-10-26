@@ -14,10 +14,11 @@ class UserController extends Controller
         
         if ($request->filled('search')) {
             $search = $request->search;
-            // Wrap in a closure to prevent orWhere from breaking other future filters
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', '%' . $search . '%')
-                  ->orWhere('email', 'like', '%' . $search . '%');
+                  ->orWhere('email', 'like', '%' . $search . '%')
+                  ->orWhere('phone', 'like', '%' . $search . '%')
+                  ->orWhere('referral_code', 'like', '%' . $search . '%');
             });
         }
         
@@ -27,7 +28,46 @@ class UserController extends Controller
 
     public function show(User $user)
     {
-        return view('admin.users.show', compact('user'));
+        // Eager-load all relationships to avoid N+1 queries
+        $user->load([
+            'wallet',
+            'machineInvestments.machine',
+            'tradingAccount',
+            'tradeOrders' => fn($q) => $q->latest()->limit(10),
+            'depositRequests' => fn($q) => $q->latest()->limit(10),
+            'withdrawalRequests' => fn($q) => $q->latest()->limit(10),
+            'transactions' => fn($q) => $q->latest()->limit(15),
+            'loans' => fn($q) => $q->latest()->limit(10),
+            'lotterySpins' => fn($q) => $q->latest()->limit(10),
+            'referrals',
+            'bankAccounts',
+            'tradingProfile',
+            'loanCreditScore',
+        ]);
+
+        // Compute summary stats in one pass (not in the blade)
+        $stats = [
+            'wallet_balance'          => (float) ($user->wallet?->balance ?? 0),
+            'wallet_locked'           => (float) ($user->wallet?->locked_balance ?? 0),
+            'total_deposited'         => (float) $user->depositRequests()->whereIn('status', ['approved', 'completed'])->sum('amount'),
+            'total_withdrawn'         => (float) $user->withdrawalRequests()->whereIn('status', ['completed', 'approved'])->sum('amount'),
+            'pending_deposits'        => $user->depositRequests()->where('status', 'pending')->count(),
+            'pending_withdrawals'     => $user->withdrawalRequests()->where('status', 'pending')->count(),
+            'total_invested'          => (float) $user->machineInvestments->sum('amount'),
+            'active_machines'         => $user->machineInvestments->where('status', 'active')->count(),
+            'total_lottery_bets'      => (float) $user->lotterySpins->sum('bet_amount'),
+            'total_lottery_wins'      => (float) $user->lotterySpins->sum('win_amount'),
+            'total_referrals'         => $user->referrals->count(),
+            'total_loans_principal'   => (float) $user->loans->sum('principal'),
+            'active_loans'            => $user->loans->where('status', 'active')->count(),
+            'trading_balance'         => (float) ($user->tradingAccount?->balance ?? 0),
+            'trading_pnl'             => (float) ($user->tradingAccount?->total_pnl ?? 0),
+            'open_orders'             => $user->tradeOrders->whereIn('status', ['open', 'pending'])->count(),
+            'transaction_count'       => $user->transactions->count(),
+            'credit_score'            => $user->loanCreditScore?->score ?? null,
+        ];
+
+        return view('admin.users.show', compact('user', 'stats'));
     }
 
     public function edit(User $user)
@@ -42,9 +82,9 @@ class UserController extends Controller
             'email' => 'required|email|unique:users,email,' . $user->id,
             'is_admin' => 'boolean',
             'is_verified' => 'boolean',
-            'kyc_status' => 'string|in:pending,verified,rejected', // Fixed to match DB
+            'kyc_status' => 'string|in:pending,verified,rejected,approved',
         ]);
-        
+
         $user->update($validated);
         return redirect()->route('admin.users.index')->with('success', 'User updated.');
     }
@@ -72,11 +112,7 @@ class UserController extends Controller
     public function togglePromo(User $user)
     {
         $user->has_promo = !$user->has_promo;
-        if ($user->has_promo) {
-            $user->promo_expires_at = now()->addDays(7);
-        } else {
-            $user->promo_expires_at = null;
-        }
+        $user->promo_expires_at = $user->has_promo ? now()->addDays(7) : null;
         $user->save();
         return back()->with('success', 'Promo status updated.');
     }
@@ -85,31 +121,23 @@ class UserController extends Controller
     {
         $users = User::all();
         $filename = 'users_' . now()->format('Y-m-d_H-i-s') . '.csv';
-        
+
         $headers = [
-            "Content-type"        => "text/csv",
-            "Content-Disposition" => "attachment; filename=$filename",
-            "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-            "Expires"             => "0"
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $columns = ['ID', 'Name', 'Email', 'Is Admin', 'Is VIP', 'Has Promo', 'KYC Status', 'Joined'];
-
-        $callback = function() use($users, $columns) {
+        $callback = function() use ($users) {
             $file = fopen('php://output', 'w');
-            fputcsv($file, $columns);
-
-            foreach ($users as $user) {
+            fputcsv($file, ['ID', 'Name', 'Email', 'Phone', 'Referral Code', 'Admin', 'VIP', 'KYC Status', 'Balance', 'Joined']);
+            foreach ($users as $u) {
                 fputcsv($file, [
-                    $user->id,
-                    $user->name,
-                    $user->email,
-                    $user->is_admin ? 'Yes' : 'No',
-                    $user->is_vip ? 'Yes' : 'No',
-                    $user->has_promo ? 'Yes' : 'No',
-                    $user->kyc_status ?? 'pending',
-                    $user->created_at->format('Y-m-d'),
+                    $u->id, $u->name, $u->email, $u->phone, $u->referral_code,
+                    $u->is_admin ? 'Yes' : 'No',
+                    $u->is_vip ? 'Yes' : 'No',
+                    $u->kyc_status ?? 'pending',
+                    $u->wallet?->balance ?? 0,
+                    $u->created_at?->format('Y-m-d'),
                 ]);
             }
             fclose($file);
