@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Hash;
 
 return new class extends Migration
 {
@@ -253,10 +252,6 @@ return new class extends Migration
         }
 
         // ═══════════════ 15-19. LOTTERY BASE TABLES ═══════════════
-        // These were only ever created by migrations now living in
-        // migrations_backup_20260529_181643/ (never run on Render).
-        // upgrade_lottery_framework.php (2026_09_13) assumes they exist.
-
         if (! Schema::hasTable('lottery_games')) {
             Schema::create('lottery_games', function (Blueprint $t) {
                 $t->id();
@@ -311,80 +306,9 @@ return new class extends Migration
             });
         }
 
-        // ═══════════════ SEEDS (idempotent) ═══════════════
-        if (Schema::hasTable('machines') && DB::table('machines')->count() === 0) {
-            $machines = [
-                ['RX0', 'Origin',   'The first spark of creation',   1000,   25000,   0.25, 0],
-                ['RX1', 'Aurora',   'Dawn of compounding wealth',    2000,   50000,   0.30, 1],
-                ['RX2', 'Nova',     'A stellar bright engine',       5000,   100000,  0.38, 2],
-                ['RX3', 'Prism',    'Refracted through gold',        10000,  250000,  0.45, 3],
-                ['RX4', 'Eclipse',  'Shadow of maximum yield',       25000,  500000,  0.55, 4],
-                ['RX5', 'Quantum',  'Entangled with exponential',    50000,  1000000, 0.70, 5],
-                ['RX6', 'Infinity', 'The unfathomable apex',         100000, 2000000, 0.88, 6],
-            ];
-            $now = now();
-            foreach ($machines as [$code, $name, $tag, $min, $max, $rate, $order]) {
-                $id = DB::table('machines')->insertGetId([
-                    'code' => $code, 'name' => $name, 'tagline' => $tag,
-                    'min_amount' => $min, 'max_amount' => $max,
-                    'growth_rate' => $rate, 'cycle_days' => 14,
-                    'sort_order' => $order, 'is_active' => true,
-                    'description' => null, 'created_at' => $now, 'updated_at' => $now,
-                ]);
-                foreach ([1 => 1.0, 2 => 1.272, 3 => 1.618] as $lvl => $mult) {
-                    if (Schema::hasTable('machine_vips')) {
-                        DB::table('machine_vips')->insert([
-                            'machine_id' => $id, 'level' => $lvl,
-                            'name' => "VIP {$lvl}", 'multiplier' => $mult,
-                            'min_amount' => 0, 'max_amount' => 0,
-                            'created_at' => $now, 'updated_at' => $now,
-                        ]);
-                    }
-                }
-            }
-        }
-
-        if (Schema::hasTable('trading_pairs') && DB::table('trading_pairs')->count() === 0) {
-            DB::table('trading_pairs')->insert([
-                'symbol' => 'BTCUSDT', 'base_currency' => 'BTC', 'quote_currency' => 'USDT',
-                'last_price' => 0, 'min_order_amount' => 0.0001, 'max_order_amount' => 100,
-                'price_precision' => 2, 'quantity_precision' => 8,
-                'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
-            ]);
-        }
-
-        if (Schema::hasTable('investment_plans') && DB::table('investment_plans')->count() === 0) {
-            $now = now();
-            $plans = [
-                ['Starter', 1000,   50000,   0.0150, 30],
-                ['Growth',  10000,  250000,  0.0225, 30],
-                ['Premium', 50000,  1000000, 0.0300, 45],
-                ['Divine',  100000, 5000000, 0.0628, 14],
-            ];
-            foreach ($plans as [$name, $min, $max, $rate, $days]) {
-                DB::table('investment_plans')->insert([
-                    'name' => $name, 'description' => "{$name} plan",
-                    'min_amount' => $min, 'max_amount' => $max,
-                    'daily_interest_rate' => $rate, 'duration_days' => $days,
-                    'is_active' => true, 'created_at' => $now, 'updated_at' => $now,
-                ]);
-            }
-        }
-
-        if (Schema::hasTable('users') && DB::table('users')->where('email', 'admin@racksephnox.com')->count() === 0) {
-            DB::table('users')->insert([
-                'name' => 'Super Admin',
-                'email' => 'admin@racksephnox.com',
-                'password' => Hash::make('admin123'),
-                'is_admin' => true,
-                'is_verified' => true,
-                'email_verified_at' => now(),
-                'kyc_status' => 'verified',
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
+        // NOTE: Data seeding (machines, investment plans, admin user)
+        // has been removed from this migration and is handled by
+        // DatabaseSeeder.php + dedicated seeders.
     }
 
     public function down(): void
