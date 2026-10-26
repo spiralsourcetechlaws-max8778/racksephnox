@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -16,7 +17,7 @@ class User extends Authenticatable
         'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at',
         'is_admin', 'kyc_level', 'is_verified', 'onboarding_completed', 'avatar', 
         'notification_preferences', 'free_spins_available',
-        'is_vip', 'has_promo', 'promo_expires_at' // Added
+        'is_vip', 'has_promo', 'promo_expires_at', // VIP & Promo Fields
     ];
 
     protected $hidden = [
@@ -31,11 +32,51 @@ class User extends Authenticatable
         'onboarding_completed' => 'boolean',
         'notification_preferences' => 'array',
         'free_spins_available' => 'integer',
-        'is_vip' => 'boolean', // Added
-        'has_promo' => 'boolean', // Added
-        'promo_expires_at' => 'datetime', // Added
-    ];                                                                  
-    
+        'is_vip' => 'boolean',
+        'has_promo' => 'boolean',
+        'promo_expires_at' => 'datetime',
+    ];
+
+    // ========== BOOT METHOD ==========
+
+    protected static function booted()
+    {
+        static::created(function ($user) {
+            // 1. ALWAYS generate a secure referral code first
+            if (empty($user->referral_code)) {
+                $user->referral_code = strtoupper(Str::random(8));
+                $user->saveQuietly(); // Save without triggering events again
+            }
+
+            // 2. Create wallet if missing
+            if (!$user->wallet) {
+                $wallet = $user->wallet()->create([
+                    'user_id' => $user->id,
+                    'balance' => 0,
+                ]);
+                $wallet->credit(60, 'Welcome bonus');
+            }
+
+            // 3. Create trading account
+            if (!$user->tradingAccount) {
+                $user->tradingAccount()->create([
+                    'balance' => 0,
+                    'locked_balance' => 0,
+                    'btc_balance' => 0,
+                ]);
+            }
+
+            // 4. Create trading profile
+            if (!$user->tradingProfile) {
+                $user->tradingProfile()->create([
+                    'username' => 'trader_' . $user->id,
+                    'is_public' => true,
+                    'allow_copy_trading' => true,
+                ]);
+            }
+        });
+    }
+
     // ========== RELATIONSHIPS ==========
 
     public function wallet()
@@ -139,35 +180,8 @@ class User extends Authenticatable
         return $this->hasOne(\App\Models\TradingBonusTracker::class);
     }
 
-    protected static function booted()
-    {
-        static::created(function ($user) {
-            if (!$user->wallet) {
-                $wallet = $user->wallet()->create([
-                    'user_id' => $user->id,
-                    'balance' => 0,
-                ]);
-                $user->referral_code = strtoupper(substr(md5($user->id . $user->email), 0, 8));
-                $user->save();
-                $wallet->credit(60, 'Welcome bonus');
-            }
-            if (!$user->tradingAccount) {
-                $user->tradingAccount()->create([
-                    'balance' => 0,
-                    'locked_balance' => 0,
-                    'btc_balance' => 0,
-                ]);
-            }
-            if (!$user->tradingProfile) {
-                $user->tradingProfile()->create([
-                    'username' => 'trader_' . $user->id,
-                    'is_public' => true,
-                    'allow_copy_trading' => true,
-                ]);
-            }
-        });
-    }
-
+    /* ---------- Loans Domain ---------- */
+    
     public function loans()
     {
         return $this->hasMany(Loan::class);
