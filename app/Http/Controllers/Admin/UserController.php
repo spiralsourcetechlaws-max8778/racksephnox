@@ -11,10 +11,16 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $query = User::query();
+        
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('email', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            // Wrap in a closure to prevent orWhere from breaking other future filters
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%' . $search . '%')
+                  ->orWhere('email', 'like', '%' . $search . '%');
+            });
         }
+        
         $users = $query->latest()->paginate(20);
         return view('admin.users.index', compact('users'));
     }
@@ -36,8 +42,9 @@ class UserController extends Controller
             'email' => 'required|email|unique:users,email,' . $user->id,
             'is_admin' => 'boolean',
             'is_verified' => 'boolean',
-            'kyc_status' => 'string|in:pending,approved,rejected',
+            'kyc_status' => 'string|in:pending,verified,rejected', // Fixed to match DB
         ]);
+        
         $user->update($validated);
         return redirect()->route('admin.users.index')->with('success', 'User updated.');
     }
@@ -78,25 +85,36 @@ class UserController extends Controller
     {
         $users = User::all();
         $filename = 'users_' . now()->format('Y-m-d_H-i-s') . '.csv';
-        $handle = fopen('php://output', 'w');
-        ob_start();
-        fputcsv($handle, ['ID', 'Name', 'Email', 'Is Admin', 'Is VIP', 'Has Promo', 'KYC Status', 'Joined']);
-        foreach ($users as $user) {
-            fputcsv($handle, [
-                $user->id,
-                $user->name,
-                $user->email,
-                $user->is_admin ? 'Yes' : 'No',
-                $user->is_vip ? 'Yes' : 'No',
-                $user->has_promo ? 'Yes' : 'No',
-                $user->kyc_status ?? 'pending',
-                $user->created_at->format('Y-m-d'),
-            ]);
-        }
-        $csv = ob_get_clean();
-        return response($csv, 200, [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
+        
+        $headers = [
+            "Content-type"        => "text/csv",
+            "Content-Disposition" => "attachment; filename=$filename",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ];
+
+        $columns = ['ID', 'Name', 'Email', 'Is Admin', 'Is VIP', 'Has Promo', 'KYC Status', 'Joined'];
+
+        $callback = function() use($users, $columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns);
+
+            foreach ($users as $user) {
+                fputcsv($file, [
+                    $user->id,
+                    $user->name,
+                    $user->email,
+                    $user->is_admin ? 'Yes' : 'No',
+                    $user->is_vip ? 'Yes' : 'No',
+                    $user->has_promo ? 'Yes' : 'No',
+                    $user->kyc_status ?? 'pending',
+                    $user->created_at->format('Y-m-d'),
+                ]);
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 }
