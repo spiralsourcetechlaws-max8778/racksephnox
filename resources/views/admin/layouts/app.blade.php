@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Admin - {{ config('app.name', 'Racksephnox') }}</title>
+    <title>@yield('page-title', 'Admin') · {{ config('app.name', 'Racksephnox') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -15,7 +15,6 @@
         <div x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 z-20 bg-black bg-opacity-50 lg:hidden"></div>
 
         <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" class="fixed inset-y-0 left-0 z-30 w-64 bg-gray-950 border-r border-gray-800 flex flex-col transition-transform duration-300 transform lg:static lg:translate-x-0">
-
             <div class="flex items-center justify-center h-16 border-b border-gray-800">
                 <a href="{{ route('admin.dashboard') }}" class="text-xl font-bold text-gold tracking-widest uppercase">Racksephnox</a>
             </div>
@@ -83,13 +82,23 @@
 
         <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
             <header class="bg-gray-900 border-b border-gray-800 h-16 flex items-center justify-between px-4 sm:px-6">
-                <button @click="sidebarOpen = !sidebarOpen" class="text-gray-400 hover:text-white focus:outline-none lg:hidden">
-                    <i class="fas fa-bars text-xl"></i>
-                </button>
-                <div class="flex items-center space-x-4 ml-auto">
-                    <span class="text-xs text-gray-500">{{ auth()->user()->role_label }}</span>
-                    <a href="{{ url('/') }}" target="_blank" class="text-sm text-gray-400 hover:text-gold">
-                        <i class="fas fa-external-link-alt mr-1"></i> View Site
+                <div class="flex items-center gap-3">
+                    <button @click="sidebarOpen = !sidebarOpen" class="text-gray-400 hover:text-white focus:outline-none lg:hidden">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                    <div>
+                        @hasSection('page-title')
+                            <h1 class="text-lg font-semibold text-white">@yield('page-title')</h1>
+                        @endif
+                        @hasSection('breadcrumbs')
+                            <div class="text-xs text-gray-500">@yield('breadcrumbs')</div>
+                        @endif
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="hidden sm:inline text-xs text-gray-500 px-2 py-1 bg-gray-800 rounded">{{ auth()->user()->role_label }}</span>
+                    <a href="{{ url('/') }}" target="_blank" class="text-sm text-gray-400 hover:text-gold transition">
+                        <i class="fas fa-external-link-alt mr-1"></i> <span class="hidden sm:inline">View Site</span>
                     </a>
                 </div>
             </header>
