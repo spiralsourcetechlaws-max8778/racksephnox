@@ -29,7 +29,12 @@ Route::prefix('v1')->group(function () {
     // Public routes
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/mpesa/callback', [MpesaController::class, 'callback'])->name('api.mpesa.callback');
+    
+    // Secured M-Pesa Callback
+    Route::post('/mpesa/callback', [MpesaController::class, 'callback'])
+        ->middleware('mpesa.source')
+        ->name('api.mpesa.callback');
+        
     Route::get('/crypto/prices', [CryptoController::class, 'prices']);
     Route::get('/crypto/history', [CryptoController::class, 'history']);
     Route::get('/crypto/market', [CryptoController::class, 'marketData']);
@@ -66,10 +71,10 @@ Route::prefix('v1')->group(function () {
         // Machines API
         Route::prefix('machines')->group(function () {
             Route::get('/', [MachineController::class, 'index']);
+            Route::get('/my-investments', [MachineController::class, 'myInvestments']);
             Route::get('/{code}', [MachineController::class, 'show']);
             Route::post('/{machine}/invest', [MachineController::class, 'invest']);
             Route::get('/{investment}/status', [MachineController::class, 'status']);
-            Route::get('/my-investments', [MachineController::class, 'myInvestments']);
         });
 
         // KYC API
@@ -113,9 +118,6 @@ Route::prefix('v1')->group(function () {
             Route::get('/link', [ReferralController::class, 'getLink']);
         });
 
-        // Crypto API
-        
-
         // Notifications API
         Route::prefix('notifications')->group(function () {
             Route::get('/', [NotificationController::class, 'index']);
@@ -127,15 +129,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/preferences', [NotificationController::class, 'preferences']);
             Route::post('/preferences', [NotificationController::class, 'updatePreferences']);
         });
-
-        // Lottery API (real‑time data)
-        Route::prefix('lottery')->group(function () {
-            Route::get('/jackpot', [ApiLotteryController::class, 'jackpot']);
-            Route::get('/leaderboard', [ApiLotteryController::class, 'leaderboard']);
-            Route::get('/achievements', [ApiLotteryController::class, 'achievements']);
-            Route::get('/recent-wins', [ApiLotteryController::class, 'recentWins']);
-            Route::get('/my-stats', [ApiLotteryController::class, 'myStats']);
-        });
+        
+        // Note: Lottery authenticated routes are handled in the dedicated block below
     });
 });
 
@@ -144,6 +139,7 @@ Route::prefix('v2')->group(function () {
     Route::get('/health', function () {
         return response()->json(['version' => '2.0', 'status' => 'healthy']);
     });
+    
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/user/profile', function (\Illuminate\Http\Request $request) {
             $user = $request->user();
@@ -189,25 +185,25 @@ Route::get('/v1/info', function () {
 Route::prefix('v1/lottery')->group(function () {
 
     // Public
-    Route::get('/games',           [App\Http\Controllers\Api\LotteryController::class, 'games']);
-    Route::get('/jackpots',        [App\Http\Controllers\Api\LotteryController::class, 'jackpots']);
-    Route::get('/leaderboard',     [App\Http\Controllers\Api\LotteryController::class, 'leaderboard']);
-    Route::get('/recent-wins',     [App\Http\Controllers\Api\LotteryController::class, 'recentWins']);
-    Route::get('/tournaments',     [App\Http\Controllers\Api\LotteryController::class, 'tournaments']);
-    Route::post('/verify',         [App\Http\Controllers\Api\LotteryController::class, 'verify']);
+    Route::get('/games',           [ApiLotteryController::class, 'games']);
+    Route::get('/jackpots',        [ApiLotteryController::class, 'jackpots']);
+    Route::get('/leaderboard',     [ApiLotteryController::class, 'leaderboard']);
+    Route::get('/recent-wins',     [ApiLotteryController::class, 'recentWins']);
+    Route::get('/tournaments',     [ApiLotteryController::class, 'tournaments']);
+    Route::post('/verify',         [ApiLotteryController::class, 'verify']);
 
     // Authenticated
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('/my-stats',         [App\Http\Controllers\Api\LotteryController::class, 'myStats']);
-        Route::post('/spin',            [App\Http\Controllers\Api\LotteryController::class, 'spin']);
-        Route::post('/free-spin',       [App\Http\Controllers\Api\LotteryController::class, 'freeSpin']);
-        Route::post('/buy-bonus',       [App\Http\Controllers\Api\LotteryController::class, 'buyBonus']);
-        Route::get('/my-missions',      [App\Http\Controllers\Api\LotteryController::class, 'myMissions']);
-        Route::post('/missions/{id}/claim', [App\Http\Controllers\Api\LotteryController::class, 'claimMission']);
-        Route::get('/achievements',     [App\Http\Controllers\Api\LotteryController::class, 'achievements']);
-        Route::get('/bonus-wheel',      [App\Http\Controllers\Api\LotteryController::class, 'bonusWheel']);
-        Route::post('/bonus-wheel/spin',[App\Http\Controllers\Api\LotteryController::class, 'spinBonusWheel']);
-        Route::get('/guilds',           [App\Http\Controllers\Api\LotteryController::class, 'guilds']);
-        Route::get('/guilds/{tournament}/leaderboard', [App\Http\Controllers\Api\LotteryController::class, 'guildLeaderboard']);
+        Route::get('/my-stats',         [ApiLotteryController::class, 'myStats']);
+        Route::post('/spin',            [ApiLotteryController::class, 'spin']);
+        Route::post('/free-spin',       [ApiLotteryController::class, 'freeSpin']);
+        Route::post('/buy-bonus',       [ApiLotteryController::class, 'buyBonus']);
+        Route::get('/my-missions',      [ApiLotteryController::class, 'myMissions']);
+        Route::post('/missions/{id}/claim', [ApiLotteryController::class, 'claimMission']);
+        Route::get('/achievements',     [ApiLotteryController::class, 'achievements']);
+        Route::get('/bonus-wheel',      [ApiLotteryController::class, 'bonusWheel']);
+        Route::post('/bonus-wheel/spin',[ApiLotteryController::class, 'spinBonusWheel']);
+        Route::get('/guilds',           [ApiLotteryController::class, 'guilds']);
+        Route::get('/guilds/{tournament}/leaderboard', [ApiLotteryController::class, 'guildLeaderboard']);
     });
 });

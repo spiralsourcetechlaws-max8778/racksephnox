@@ -14,22 +14,25 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Preserve existing custom middleware alias
+        // Register ALL custom middleware aliases here.
+        // Laravel 11+ treats this file as authoritative; if an alias
+        // is missing here, it throws 'Target class [x] does not exist'.
         $middleware->alias([
-            'antifraud' => \App\Http\Middleware\AntiFraud::class,
+            'admin'            => \App\Http\Middleware\Admin::class,
+            'onboarding'       => \App\Http\Middleware\Onboarding::class,
+            'two-factor'       => \App\Http\Middleware\TwoFactor::class,
+            'api.throttle'     => \App\Http\Middleware\ApiThrottle::class,
+            'security.headers' => \App\Http\Middleware\SecurityHeaders::class,
+            'localization'     => \App\Http\Middleware\Localization::class,
+            'antifraud'        => \App\Http\Middleware\AntiFraud::class,
+            'mpesa.source'     => \App\Http\Middleware\VerifyMpesaSource::class,
         ]);
 
-        // Trust Render's load balancer so $request->isSecure() returns true
-        // even though TLS terminates at Render and HTTP reaches the container.
-        // This is required only if SESSION_SECURE_COOKIE=true (not set today),
-        // but harmless and correct to have.
+        // Trust Render's load balancer
         $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        // ─── 419 — Session/CSRF token expired ────────────────────────────
-        // Replaces the raw "419 Page Expired" screen with a redirect to
-        // /login and a user-friendly flash message. Fires when a form was
-        // open longer than SESSION_LIFETIME (default 120 min).
+        // Handle 419 Session Expired gracefully
         $exceptions->render(function (TokenMismatchException $e, Request $request) {
             if ($request->expectsJson()) {
                 return response()->json([
