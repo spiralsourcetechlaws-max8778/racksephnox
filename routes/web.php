@@ -149,3 +149,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/status/{investment}', [MachineController::class, 'status'])->name('status');
     });
 });
+
+// Admin Subdomain Redirect
+Route::domain('admin.racksephnox-empire.de5.net')->group(function () {
+    Route::get('/', function () {
+        return redirect('/admin');
+    });
+});
