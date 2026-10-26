@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\LotteryController;
 use App\Http\Controllers\Admin\LotteryAnalyticsController;
 use App\Http\Controllers\Admin\LoanController;
 use App\Http\Controllers\Admin\MonitoringController;
+use App\Http\Controllers\Admin\AdjustmentController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
@@ -44,6 +45,16 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('users/{user}/toggle-vip', [UserController::class, 'toggleVip'])->name('users.toggle-vip');
         Route::post('users/{user}/toggle-promo', [UserController::class, 'togglePromo'])->name('users.toggle-promo');
         Route::post('users/export', [UserController::class, 'export'])->name('users.export');
+
+        // ─── Universal Admin Adjustment Hub (super_admin only) ───
+        Route::prefix('users/{user}/adjust')->name('users.adjust.')->group(function () {
+            Route::post('wallet',         [AdjustmentController::class, 'wallet'])->name('wallet');
+            Route::post('machine',        [AdjustmentController::class, 'machine'])->name('machine');
+            Route::post('machine/{investmentId}/cancel', [AdjustmentController::class, 'cancelMachine'])->name('machine.cancel');
+            Route::post('trading',        [AdjustmentController::class, 'trading'])->name('trading');
+            Route::post('loan',           [AdjustmentController::class, 'loan'])->name('loan');
+            Route::post('lottery',        [AdjustmentController::class, 'lottery'])->name('lottery');
+        });
     });
 
     // ============ SUPER ADMIN + FINANCE: Money movement ============
