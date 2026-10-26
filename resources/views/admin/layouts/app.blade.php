@@ -58,7 +58,10 @@
                     <a href="{{ route('admin.lottery.index') }}" class="flex items-center px-3 py-2.5 text-sm font-medium rounded-lg {{ request()->routeIs('admin.lottery.*') ? 'bg-gray-800 text-gold' : 'text-gray-400 hover:bg-gray-800 hover:text-white transition' }}">
                         <i class="fas fa-dice w-6 text-center mr-2"></i> Lottery
                     </a>
-                    <a href="{{ route('admin.settings.index') }}" class="flex items-center px-3 py-2.5 text-sm font-medium rounded-lg {{ request()->routeIs('admin.settings.*') ? 'bg-gray-800 text-gold' : 'text-gray-400 hover:bg-gray-800 hover:text-white transition' }}">
+                    <a href="{{ route('admin.monitoring.index') }}" class="flex items-center px-3 py-2.5 text-sm font-medium rounded-lg {{ request()->routeIs('admin.monitoring.*') ? 'bg-gray-800 text-gold' : 'text-gray-400 hover:bg-gray-800 hover:text-white transition' }}">
+                    <i class="fas fa-heartbeat w-6 text-center mr-2 text-red-400"></i> Monitoring
+                </a>
+                <a href="{{ route('admin.settings.index') }}" class="flex items-center px-3 py-2.5 text-sm font-medium rounded-lg {{ request()->routeIs('admin.settings.*') ? 'bg-gray-800 text-gold' : 'text-gray-400 hover:bg-gray-800 hover:text-white transition' }}">
                         <i class="fas fa-cog w-6 text-center mr-2"></i> Settings
                     </a>
                 @endif

@@ -125,6 +125,7 @@ class DashboardController extends Controller
             $recentActivities->push([
                 'created_at' => $d->created_at,
                 'user'       => $d->user?->name ?? 'Unknown',
+                'user_id'    => $d->user_id,
                 'type'       => 'deposit',
                 'amount'     => $d->amount,
                 'status'     => $d->status,
@@ -136,6 +137,7 @@ class DashboardController extends Controller
             $recentActivities->push([
                 'created_at' => $w->created_at,
                 'user'       => $w->user?->name ?? 'Unknown',
+                'user_id'    => $w->user_id,
                 'type'       => 'withdrawal',
                 'amount'     => $w->amount,
                 'status'     => $w->status,
@@ -147,6 +149,7 @@ class DashboardController extends Controller
             $recentActivities->push([
                 'created_at' => $s->created_at,
                 'user'       => $s->user?->name ?? 'Unknown',
+                'user_id'    => $s->user_id,
                 'type'       => 'lottery',
                 'bet'        => $s->bet_amount ?? 0,
                 'win'        => $s->win_amount ?? 0,
@@ -159,6 +162,7 @@ class DashboardController extends Controller
             $recentActivities->push([
                 'created_at' => $l->created_at,
                 'user'       => $l->user?->name ?? 'Unknown',
+                'user_id'    => $l->user_id,
                 'type'       => 'loan',
                 'amount'     => $l->principal,
                 'status'     => $l->status,
