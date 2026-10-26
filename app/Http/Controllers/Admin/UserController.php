@@ -76,7 +76,7 @@ class UserController extends Controller
 
         return redirect()
             ->route('admin.users.show', $user)
-            ->with('success', "{$user->role_label} created: {$user->email}. Referral: {$user->referral_code}");
+            ->with('success', "{$user->role_label} created: {$user->email}");
     }
 
     public function show(User $user)
@@ -126,24 +126,116 @@ class UserController extends Controller
         return view('admin.users.edit', compact('user'));
     }
 
+    /**
+     * Unified update — handles EVERY field on the edit form in one PATCH.
+     *
+     * Fields handled:
+     *   Identity : name, email, phone
+     *   Password : password + password_confirmation (both optional)
+     *   Status   : kyc_status, kyc_level, is_verified, is_active
+     *   Admin    : is_admin, admin_role (super_admin only)
+     *   User     : is_vip, has_promo (super_admin only)
+     *
+     * Safety guards (self-edit only):
+     *   - Cannot remove own admin privileges
+     *   - Cannot demote self from super_admin
+     *   - Cannot unverify self
+     *   - Cannot deactivate self
+     *
+     * All fields use `$request->has(...)` checks so disabled inputs
+     * (like self-edit-locked toggles) safely fall back to current values.
+     */
     public function update(Request $request, User $user)
     {
+        $isSelf = $user->id === auth()->id();
+
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
-            'phone' => 'nullable|string|max:20',
-            'is_verified' => 'nullable|boolean',
-            'kyc_status' => 'nullable|in:pending,verified,rejected,approved',
+            'name'        => 'required|string|max:255',
+            'email'       => 'required|email|unique:users,email,' . $user->id,
+            'phone'       => 'nullable|string|max:20',
+            'password'    => 'nullable|string|min:8|confirmed',
+            'kyc_status'  => 'nullable|in:pending,verified,rejected',
+            'kyc_level'   => 'nullable|in:basic,tier1,tier2',
+            'admin_role'  => 'nullable|in:user,super_admin,finance,support',
         ]);
 
-        if ($user->id === auth()->id() && $request->has('is_admin') && !$request->boolean('is_admin')) {
-            return back()->withErrors(['error' => 'You cannot remove your own admin privileges.']);
+        // ─── Compute privilege values defensively ────────────────────
+        // Missing fields (e.g. from disabled self-edit inputs) keep
+        // their current value instead of being wiped.
+        $newIsAdmin    = $request->has('is_admin')    ? $request->boolean('is_admin')    : (bool) $user->is_admin;
+        $newIsVerified = $request->has('is_verified') ? $request->boolean('is_verified') : (bool) $user->is_verified;
+        $newIsActive   = $request->has('is_active')   ? $request->boolean('is_active')   : ($user->is_active ?? true);
+        $newIsVip      = $request->has('is_vip')      ? $request->boolean('is_vip')      : (bool) $user->is_vip;
+        $newHasPromo   = $request->has('has_promo')   ? $request->boolean('has_promo')   : (bool) $user->has_promo;
+        $newAdminRole  = $request->has('admin_role')  ? $request->input('admin_role')    : $user->admin_role;
+
+        // ─── Safety guards for self-editing ─────────────────────────
+        if ($isSelf) {
+            if (!$newIsAdmin) {
+                return back()->withInput()->withErrors(['error' => 'You cannot remove your own admin privileges.']);
+            }
+            if ($newAdminRole !== 'super_admin' && $user->admin_role === 'super_admin') {
+                return back()->withInput()->withErrors(['error' => 'You cannot demote yourself from Super Admin.']);
+            }
+            if (!$newIsVerified) {
+                return back()->withInput()->withErrors(['error' => 'You cannot unverify your own account.']);
+            }
+            if (!$newIsActive) {
+                return back()->withInput()->withErrors(['error' => 'You cannot deactivate your own account.']);
+            }
         }
 
-        $validated['is_verified'] = $request->boolean('is_verified');
-        $user->update($validated);
+        // ─── Reconcile is_admin <-> admin_role ───────────────────────
+        if ($newAdminRole && $newAdminRole !== 'user') {
+            $newIsAdmin = true;   // setting a role implies admin
+        }
+        if ($newIsAdmin && (!$newAdminRole || $newAdminRole === 'user')) {
+            $newAdminRole = $user->admin_role ?? 'super_admin';   // admin with no role = super
+        }
+        if (!$newIsAdmin) {
+            $newAdminRole = null;   // not admin = no role
+        }
 
-        return redirect()->route('admin.users.show', $user)->with('success', 'User updated successfully.');
+        // ─── Build the update payload ────────────────────────────────
+        $data = [
+            'name'        => $validated['name'],
+            'email'       => $validated['email'],
+            'phone'       => $validated['phone'] ?? null,
+            'kyc_status'  => $validated['kyc_status'] ?? $user->kyc_status ?? 'pending',
+            'kyc_level'   => $validated['kyc_level'] ?? $user->kyc_level ?? 'basic',
+            'is_admin'    => $newIsAdmin,
+            'admin_role'  => $newAdminRole,
+            'is_verified' => $newIsVerified,
+            'is_vip'      => $newIsVip,
+            'has_promo'   => $newHasPromo,
+            'is_active'   => $newIsActive,
+        ];
+
+        // Password (only if provided)
+        if (!empty($validated['password'])) {
+            $data['password'] = Hash::make($validated['password']);
+        }
+
+        // Email verification timestamp
+        if ($newIsVerified && !$user->email_verified_at) {
+            $data['email_verified_at'] = now();
+        } elseif (!$newIsVerified) {
+            $data['email_verified_at'] = null;
+        }
+
+        // Promo expiry: set 7 days on first activation, clear when removed
+        if ($newHasPromo && !$user->has_promo) {
+            $data['promo_expires_at'] = now()->addDays(7);
+        } elseif (!$newHasPromo) {
+            $data['promo_expires_at'] = null;
+        }
+        // If has_promo was already true and stays true, keep existing expiry
+
+        $user->update($data);
+
+        return redirect()
+            ->route('admin.users.show', $user)
+            ->with('success', 'All changes saved successfully.');
     }
 
     public function destroy(User $user)
@@ -151,12 +243,9 @@ class UserController extends Controller
         if ($user->id === auth()->id()) {
             return back()->withErrors(['error' => 'You cannot delete your own account.']);
         }
-
         $email = $user->email;
         $user->delete();
-
-        return redirect()->route('admin.users.index')
-            ->with('success', "User {$email} has been deleted.");
+        return redirect()->route('admin.users.index')->with('success', "User {$email} deleted.");
     }
 
     public function toggleAdmin(User $user)
@@ -164,27 +253,18 @@ class UserController extends Controller
         if ($user->id === auth()->id() && $user->is_admin) {
             return back()->withErrors(['error' => 'You cannot demote yourself.']);
         }
-
         $user->is_admin = !$user->is_admin;
         $user->admin_role = $user->is_admin ? ($user->admin_role ?? 'super_admin') : null;
         $user->save();
-
         return back()->with('success', "{$user->name} is now: {$user->role_label}");
     }
 
-    /**
-     * Change a user's admin role (or demote to regular user).
-     */
     public function changeRole(Request $request, User $user)
     {
         if ($user->id === auth()->id()) {
             return back()->withErrors(['error' => 'You cannot change your own role.']);
         }
-
-        $validated = $request->validate([
-            'role' => 'required|in:user,super_admin,finance,support',
-        ]);
-
+        $validated = $request->validate(['role' => 'required|in:user,super_admin,finance,support']);
         if ($validated['role'] === 'user') {
             $user->is_admin = false;
             $user->admin_role = null;
@@ -193,7 +273,6 @@ class UserController extends Controller
             $user->admin_role = $validated['role'];
         }
         $user->save();
-
         return back()->with('success', "Role updated to: {$user->role_label}");
     }
 
@@ -216,15 +295,13 @@ class UserController extends Controller
     {
         $users = User::all();
         $filename = 'users_' . now()->format('Y-m-d_H-i-s') . '.csv';
-
         return response()->stream(function() use ($users) {
             $file = fopen('php://output', 'w');
             fputcsv($file, ['ID', 'Name', 'Email', 'Phone', 'Role', 'Referral', 'KYC', 'Balance', 'Joined']);
             foreach ($users as $u) {
                 fputcsv($file, [
                     $u->id, $u->name, $u->email, $u->phone,
-                    $u->role_label,
-                    $u->referral_code,
+                    $u->role_label, $u->referral_code,
                     $u->kyc_status ?? 'pending',
                     $u->wallet?->balance ?? 0,
                     $u->created_at?->format('Y-m-d'),
