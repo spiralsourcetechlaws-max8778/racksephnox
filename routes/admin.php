@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\LotteryController;
 use App\Http\Controllers\Admin\LotteryAnalyticsController;
 use App\Http\Controllers\Admin\LoanController;
+use App\Http\Controllers\Admin\MonitoringController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
@@ -94,5 +95,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('settings', [SettingsController::class, 'update'])->name('settings.update');
         Route::post('settings/cache-clear', [SettingsController::class, 'clearCache'])->name('settings.cache-clear');
         Route::post('settings/maintenance', [SettingsController::class, 'toggleMaintenance'])->name('settings.maintenance');
+
+        Route::get('monitoring', [MonitoringController::class, 'index'])->name('monitoring.index');
     });
 });
