@@ -9,7 +9,14 @@ class TradingAccount extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'balance', 'locked_balance', 'btc_balance', 'total_pnl', 'currency'];
+    protected $fillable = [
+        'user_id',
+        'balance',
+        'locked_balance',
+        'btc_balance',
+        'total_pnl',
+        'currency',
+    ];
 
     protected $casts = [
         'balance'        => 'float',
@@ -23,20 +30,29 @@ class TradingAccount extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * Available KES for placing buy orders (balance minus locked funds).
+     */
     public function getAvailableBalanceAttribute(): float
     {
-        return max(0, (float) $this->balance - (float) $this->locked_balance);
+        return max(0.0, (float) $this->balance - (float) $this->locked_balance);
     }
 
-    public function getTotalValueAttribute(): float
+    /**
+     * Total value of the account expressed in KES using live BTC price.
+     */
+    public function getTotalValueKesAttribute(): float
     {
-        // balance is KES; btc_balance is in BTC (converted using market price at runtime)
-        return (float) $this->balance;
+        $btcPrice = (float) \Cache::get('btc_market_price', 0);
+        return (float) $this->balance + ((float) $this->btc_balance * $btcPrice);
     }
 
-    public function getTotalBtcValueKesAttribute(): float
+    /**
+     * Total BTC value expressed in KES.
+     */
+    public function getBtcValueKesAttribute(): float
     {
-        $btcPrice = \Cache::get('btc_market_price', 0);
+        $btcPrice = (float) \Cache::get('btc_market_price', 0);
         return (float) $this->btc_balance * $btcPrice;
     }
 }

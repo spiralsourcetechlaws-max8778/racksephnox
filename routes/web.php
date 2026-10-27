@@ -60,19 +60,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/kyc', [KycController::class, 'index'])->name('kyc');
     Route::post('/kyc/upload', [KycController::class, 'upload'])->name('kyc.upload');
 
-    // Trading
+    // Trading — specific routes before any wildcard
     Route::prefix('trading')->name('trading.')->group(function () {
         Route::get('/', [TradingController::class, 'index'])->name('index');
+        Route::get('/price', [TradingController::class, 'price'])->name('price');
+        Route::get('/candles/{interval}', [TradingController::class, 'candles'])->name('candles');
+        Route::get('/order-book', [TradingController::class, 'orderBook'])->name('order-book');
+        Route::get('/analytics', [TradingController::class, 'analytics'])->name('analytics');
         Route::post('/buy', [TradingController::class, 'buy'])->name('buy');
         Route::post('/sell', [TradingController::class, 'sell'])->name('sell');
         Route::post('/orders/{order}/cancel', [TradingController::class, 'cancelOrder'])->name('cancel');
-        Route::get('/order-book', [TradingController::class, 'orderBook'])->name('order-book');
-        Route::get('/candles/{interval}', [TradingController::class, 'candles'])->name('candles');
-        Route::get('/analytics', [TradingController::class, 'analytics'])->name('analytics');
         Route::post('/transfer/in', [TradingController::class, 'transferToTrading'])->name('transfer.in');
         Route::post('/transfer/out', [TradingController::class, 'transferFromTrading'])->name('transfer.out');
-        Route::get('/price', [TradingController::class, 'price'])->name('price');
-        Route::get('/candles/{interval}', [TradingController::class, 'candles'])->name('candles');
     });
 
     // Social Trading
@@ -132,7 +131,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{loan}/cancel', [App\Http\Controllers\LoanController::class, 'cancel'])->name('cancel');
     });
 
-    // Machines — ORDER MATTERS: specific routes before wildcard {code}
+    // Machines — specific routes before {code} wildcard
     Route::prefix('machines')->name('machines.')->group(function () {
         Route::get('/', [MachineController::class, 'index'])->name('index');
         Route::get('/my-investments', [MachineController::class, 'myInvestments'])->name('my-investments');

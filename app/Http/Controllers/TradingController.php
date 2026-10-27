@@ -11,6 +11,7 @@ use App\Services\Trading\WalletTradingBridge;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class TradingController extends Controller
 {
@@ -62,12 +63,42 @@ class TradingController extends Controller
             ->take(20)
             ->get();
 
-        $orderBook = $this->engine->getOrderBook();
+        $orderBook     = $this->engine->getOrderBook();
         $walletBalance = (float) ($user->wallet?->balance ?? 0);
 
         return view('trading.index', compact(
             'tradingAccount', 'btcPrice', 'openOrders', 'orderHistory', 'orderBook', 'walletBalance'
         ));
+    }
+
+    public function price()
+    {
+        return response()->json([
+            'price_kes' => $this->engine->getMarketPrice(),
+            'price_usd' => (float) Cache::get('btc_market_price_usd', 0),
+            'timestamp' => now()->toIso8601String(),
+        ]);
+    }
+
+    public function candles(Request $request, string $interval = '1h')
+    {
+        $allowed = ['1m', '5m', '15m', '1h', '4h', '1d'];
+        if (!in_array($interval, $allowed, true)) {
+            $interval = '1h';
+        }
+
+        try {
+            $candles = $this->chart->getCandles($this->pair->id, $interval, 500);
+            return response()->json($candles);
+        } catch (\Throwable $e) {
+            Log::error('Candles fetch failed', ['interval' => $interval, 'error' => $e->getMessage()]);
+            return response()->json([], 500);
+        }
+    }
+
+    public function orderBook()
+    {
+        return response()->json($this->engine->getOrderBook());
     }
 
     public function transferToTrading(Request $request)
@@ -160,32 +191,27 @@ class TradingController extends Controller
         }
     }
 
-    public function orderBook()
+    public function analytics()
     {
-        return response()->json($this->engine->getOrderBook());
-    }
+        $user = Auth::user();
+        $account = $user->tradingAccount;
 
-    public function candles(Request $request, string $interval = '1h')
-    {
-        $allowed = ['1m', '5m', '15m', '1h', '4h', '1d'];
-        if (!in_array($interval, $allowed, true)) {
-            $interval = '1h';
-        }
+        $stats = [
+            'total_orders'      => TradeOrder::where('user_id', $user->id)->count(),
+            'completed_orders'  => TradeOrder::where('user_id', $user->id)->where('status', 'completed')->count(),
+            'open_orders'       => TradeOrder::where('user_id', $user->id)->whereIn('status', ['pending', 'partial'])->count(),
+            'total_volume_kes'  => (float) TradeOrder::where('user_id', $user->id)->sum('filled_kes'),
+            'total_pnl_kes'     => (float) ($account?->total_pnl ?? 0),
+            'trading_balance'   => (float) ($account?->balance ?? 0),
+            'btc_balance'       => (float) ($account?->btc_balance ?? 0),
+            'wallet_balance'    => (float) ($user->wallet?->balance ?? 0),
+        ];
 
-        try {
-            $candles = $this->chart->getCandles($this->pair->id, $interval, 500);
-            return response()->json($candles);
-        } catch (\Throwable $e) {
-            \Log::error('Candles fetch failed', ['interval' => $interval, 'error' => $e->getMessage()]);
-            return response()->json([], 500);
-        }
-    }
+        $recentOrders = TradeOrder::where('user_id', $user->id)
+            ->latest()
+            ->take(50)
+            ->get();
 
-    public function price()
-    {
-        return response()->json([
-            'price_kes' => $this->engine->getMarketPrice(),
-            'price_usd' => (float) \Cache::get('btc_market_price_usd', 0),
-        ]);
+        return view('trading.analytics', compact('stats', 'recentOrders'));
     }
 }
