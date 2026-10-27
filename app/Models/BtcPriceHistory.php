@@ -9,10 +9,11 @@ class BtcPriceHistory extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['price_kes', 'recorded_at'];
+    protected $fillable = ['price', 'price_kes', 'currency', 'recorded_at'];
 
     protected $casts = [
-        'price_kes' => 'decimal:2',
+        'price'       => 'decimal:8',
+        'price_kes'   => 'decimal:2',
         'recorded_at' => 'datetime',
     ];
 }
