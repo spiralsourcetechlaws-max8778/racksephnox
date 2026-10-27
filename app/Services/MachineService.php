@@ -15,12 +15,8 @@ use RuntimeException;
 class MachineService
 {
     public const CYCLE_DAYS = 14;
-    public const EARLY_PENALTY = 20;   // %
-    public const REFERRAL_RATE = 5;    // %
-
-    /* ============================================================
-     |  READ
-     ============================================================ */
+    public const EARLY_PENALTY = 20;
+    public const REFERRAL_RATE = 5;
 
     public function getActiveMachines()
     {
@@ -41,215 +37,205 @@ class MachineService
     {
         $vip = $machine->vips()->where('level', $level)->first();
         if (!$vip) {
-            throw new RuntimeException("VIP level {$level} not found for {$machine->code}.");
+            throw new RuntimeException("VIP level {$level} is not available for {$machine->code}.");
         }
         return $vip;
     }
 
-    /* ============================================================
-     |  INVEST
-     ============================================================ */
-
+    /**
+     * Execute a machine investment atomically.
+     * Uses Wallet::debit() for balance integrity.
+     */
     public function invest(User $user, Machine $machine, int $vipLevel, float $amount): MachineInvestment
     {
         $vip = $this->getVipTier($machine, $vipLevel);
 
         if (!$machine->is_active) {
-            throw new RuntimeException('This machine is not currently active.');
-        }
-        if ($amount < $vip->start_amount) {
-            throw new RuntimeException(
-                'Minimum investment for VIP ' . $vipLevel . ' is KES ' . number_format($vip->start_amount, 2)
-            );
-        }
-        if ($vip->max_amount && $amount > $vip->max_amount) {
-            throw new RuntimeException(
-                'Maximum investment for VIP ' . $vipLevel . ' is KES ' . number_format($vip->max_amount, 2)
-            );
+            throw new RuntimeException('This machine is not currently accepting investments.');
         }
 
-        $wallet = $user->wallet ?? Wallet::firstOrCreate(['user_id' => $user->id], ['balance' => 0]);
-        if ($wallet->balance < $amount) {
-            throw new RuntimeException('Insufficient wallet balance.');
+        $min = (float) ($vip->start_amount ?? $machine->getStartAmountForVip($vipLevel));
+        if ($amount < $min) {
+            throw new RuntimeException('Minimum for VIP ' . $vipLevel . ' is KES ' . number_format($min, 2));
+        }
+
+        $max = (float) ($vip->max_amount ?? 0);
+        if ($max > 0 && $amount > $max) {
+            throw new RuntimeException('Maximum for VIP ' . $vipLevel . ' is KES ' . number_format($max, 2));
+        }
+
+        $wallet = $user->wallet;
+        if (!$wallet) {
+            throw new RuntimeException('Wallet not found. Contact support.');
+        }
+        if ((float) $wallet->balance < $amount) {
+            throw new RuntimeException(
+                'Insufficient balance. Your wallet: KES ' . number_format((float) $wallet->balance, 2)
+                . ', required: KES ' . number_format($amount, 2)
+            );
         }
 
         return DB::transaction(function () use ($user, $machine, $vip, $amount, $wallet) {
-
-            // 1. Debit wallet
-            $wallet->balance -= $amount;
-            $wallet->save();
+            // 1. Debit wallet through the method that enforces balance + transaction record
+            $wallet->debit($amount, "Machine investment: {$machine->name} · VIP {$vip->level}", 'machine_investment');
 
             // 2. Calculate projections
-            $days          = $machine->duration_days ?? self::CYCLE_DAYS;
-            $growthRate    = (float) $vip->growth_rate;
-            $totalProfit   = round($amount * $growthRate / 100, 2);
-            $dailyProfit   = round($totalProfit / $days, 2);
-            $startDate     = now();
-            $endDate       = $startDate->copy()->addDays($days);
+            $days        = (int) ($machine->duration_days ?: self::CYCLE_DAYS);
+            $growthRate  = (float) ($vip->growth_rate ?? $machine->growth_rate);
+            $totalProfit = round($amount * $growthRate / 100, 2);
+            $dailyProfit = $days > 0 ? round($totalProfit / $days, 2) : 0;
+            $startDate   = now();
+            $endDate     = $startDate->copy()->addDays($days);
 
-            // 3. Create the investment record
-            $investment = MachineInvestment::create([
-                'user_id'                => $user->id,
-                'machine_id'             => $machine->id,
-                'vip_level'              => $vip->level,
-                'amount'                 => $amount,
-                'daily_profit'           => $dailyProfit,
-                'total_projected_profit' => $totalProfit,
-                'profit_credited'        => 0,
-                'status'                 => 'active',
-                'start_date'             => $startDate,
-                'end_date'               => $endDate,
-                'last_accrued_at'        => $startDate,
-                'withdrawn'              => false,
-                'early_withdrawn'        => false,
-                'penalty_applied'        => 0,
-            ]);
+            // 3. Build column payload defensively (some columns may not exist)
+            $cols = \Schema::getColumnListing('machine_investments');
+            $payload = [
+                'user_id'      => $user->id,
+                'machine_id'   => $machine->id,
+                'vip_level'    => $vip->level,
+                'amount'       => $amount,
+                'daily_profit' => $dailyProfit,
+                'start_date'   => $startDate,
+                'end_date'     => $endDate,
+                'status'       => 'active',
+                'profit_credited' => 0,
+            ];
 
-            // 4. Record the transaction
-            Transaction::create([
-                'user_id'       => $user->id,
-                'wallet_id'     => $wallet->id,
-                'type'          => 'machine_investment',
-                'amount'        => -$amount,
-                'balance_after' => $wallet->balance,
-                'description'   => "Invested in {$machine->name} · VIP {$vip->level}",
-                'reference'     => 'INV-' . $investment->id,
-                'status'        => 'completed',
-            ]);
+            if (in_array('total_projected_profit', $cols)) $payload['total_projected_profit'] = $totalProfit;
+            if (in_array('total_return', $cols))           $payload['total_return'] = $amount + $totalProfit;
+            if (in_array('last_accrued_at', $cols))        $payload['last_accrued_at'] = $startDate;
+            if (in_array('last_profit_date', $cols))       $payload['last_profit_date'] = $startDate;
+            if (in_array('withdrawn', $cols))              $payload['withdrawn'] = false;
+            if (in_array('early_withdrawn', $cols))        $payload['early_withdrawn'] = false;
+            if (in_array('penalty_applied', $cols))        $payload['penalty_applied'] = 0;
 
-            // 5. Referral bonus (if user was referred)
+            $investment = MachineInvestment::create($payload);
+
+            // 4. Update the transaction reference (the debit transaction exists, but reference it)
+            Transaction::where('user_id', $user->id)
+                ->where('type', 'machine_investment')
+                ->where('reference', null)
+                ->latest('id')
+                ->limit(1)
+                ->update(['reference' => 'INV-' . $investment->id]);
+
+            // 5. Pay referral bonus if user was referred
             $this->payReferralBonus($user, $amount);
 
             Log::info('Machine investment created', [
-                'user_id' => $user->id,
-                'machine' => $machine->code,
-                'vip'     => $vip->level,
-                'amount'  => $amount,
+                'investment_id' => $investment->id,
+                'user_id'       => $user->id,
+                'machine'       => $machine->code,
+                'vip'           => $vip->level,
+                'amount'        => $amount,
+                'daily_profit'  => $dailyProfit,
+                'total_profit'  => $totalProfit,
             ]);
 
             return $investment->fresh(['machine', 'user']);
         });
     }
 
-    /* ============================================================
-     |  ACCRUE DAILY PROFIT
-     ============================================================ */
-
     /**
-     * Credit daily profit to every active investment whose cycle has started.
-     * Idempotent — runs only once per day per investment.
+     * Credit daily profit to every active investment.
+     * Idempotent per calendar day.
      */
     public function accrueDailyProfits(): int
     {
         $credited = 0;
+        $cols = \Schema::getColumnListing('machine_investments');
+        $accrueCol = in_array('last_accrued_at', $cols) ? 'last_accrued_at'
+                   : (in_array('last_profit_date', $cols) ? 'last_profit_date' : null);
+
+        if (!$accrueCol) {
+            Log::warning('accrueDailyProfits: no accrual timestamp column found');
+            return 0;
+        }
 
         MachineInvestment::active()
-            ->where(function ($q) {
-                $q->whereNull('last_accrued_at')
-                  ->orWhere('last_accrued_at', '<', now()->startOfDay());
+            ->where(function ($q) use ($accrueCol) {
+                $q->whereNull($accrueCol)->orWhere($accrueCol, '<', now()->startOfDay());
             })
-            ->chunkById(100, function ($investments) use (&$credited) {
+            ->chunkById(100, function ($investments) use (&$credited, $accrueCol) {
                 foreach ($investments as $inv) {
-                    if ($this->accrueOne($inv)) $credited++;
+                    try {
+                        if ($this->accrueOne($inv, $accrueCol)) $credited++;
+                    } catch (\Throwable $e) {
+                        Log::error('accrueOne failed', ['investment_id' => $inv->id, 'error' => $e->getMessage()]);
+                    }
                 }
             });
 
         return $credited;
     }
 
-    protected function accrueOne(MachineInvestment $inv): bool
+    protected function accrueOne(MachineInvestment $inv, string $accrueCol): bool
     {
         if ($inv->status !== 'active') return false;
-        if ($inv->days_remaining === 0) {
+        if ($inv->end_date && $inv->end_date->isPast()) {
             $inv->update(['status' => 'completed']);
             return false;
         }
 
-        return DB::transaction(function () use ($inv) {
+        $daily = (float) ($inv->daily_profit ?? 0);
+        if ($daily <= 0) {
+            $inv->update([$accrueCol => now()]);
+            return false;
+        }
+
+        return DB::transaction(function () use ($inv, $daily, $accrueCol) {
             $wallet = $inv->user->wallet;
+            if (!$wallet) {
+                Log::warning('Investment user has no wallet', ['investment_id' => $inv->id]);
+                return false;
+            }
 
-            $wallet->balance += $inv->daily_profit;
-            $wallet->save();
+            $wallet->credit($daily, "Daily profit: {$inv->machine->name} VIP {$inv->vip_level}", 'machine_profit');
 
-            $inv->profit_credited += $inv->daily_profit;
-            $inv->last_accrued_at  = now();
+            $inv->profit_credited = (float) $inv->profit_credited + $daily;
+            $inv->{$accrueCol} = now();
             $inv->save();
-
-            Transaction::create([
-                'user_id'       => $inv->user_id,
-                'wallet_id'     => $wallet->id,
-                'type'          => 'machine_profit',
-                'amount'        => $inv->daily_profit,
-                'balance_after' => $wallet->balance,
-                'description'   => "Daily profit · {$inv->machine->name} VIP {$inv->vip_level}",
-                'reference'     => 'PROFIT-' . $inv->id . '-' . now()->format('Ymd'),
-                'status'        => 'completed',
-            ]);
 
             return true;
         });
     }
 
-    /* ============================================================
-     |  WITHDRAWAL (matured cycle)
-     ============================================================ */
-
     public function withdrawMatured(MachineInvestment $inv): float
     {
-        if ($inv->withdrawn) {
+        if ($inv->withdrawn || $inv->status === 'completed') {
             throw new RuntimeException('Already withdrawn.');
         }
-        if ($inv->days_remaining > 0) {
+        if ($inv->end_date && $inv->end_date->isFuture()) {
             throw new RuntimeException('Investment cycle not yet complete.');
         }
 
         return DB::transaction(function () use ($inv) {
             $wallet = $inv->user->wallet;
-            $payout = $inv->amount + $inv->profit_credited;
+            $payout = (float) $inv->amount + (float) $inv->profit_credited;
 
-            $wallet->balance += $payout;
-            $wallet->save();
+            $wallet->credit($payout, "Matured payout: {$inv->machine->name}", 'machine_payout');
 
             $inv->withdrawn = true;
             $inv->status    = 'completed';
             $inv->save();
 
-            Transaction::create([
-                'user_id'       => $inv->user_id,
-                'wallet_id'     => $wallet->id,
-                'type'          => 'machine_payout',
-                'amount'        => $payout,
-                'balance_after' => $wallet->balance,
-                'description'   => "Matured payout · {$inv->machine->name}",
-                'reference'     => 'PAYOUT-' . $inv->id,
-                'status'        => 'completed',
-            ]);
-
             return $payout;
         });
     }
 
-    /* ============================================================
-     |  EARLY WITHDRAWAL (20% penalty)
-     ============================================================ */
-
     public function earlyWithdraw(MachineInvestment $inv): float
     {
-        if ($inv->early_withdrawn || $inv->withdrawn) {
-            throw new RuntimeException('Already withdrawn.');
-        }
-        if ($inv->status !== 'active') {
-            throw new RuntimeException('Only active investments can be early withdrawn.');
+        if ($inv->withdrawn || $inv->status !== 'active') {
+            throw new RuntimeException('Only active, unwithdrawn investments can be early withdrawn.');
         }
 
         return DB::transaction(function () use ($inv) {
-            $wallet   = $inv->user->wallet;
-            $principal = $inv->amount;
+            $wallet    = $inv->user->wallet;
+            $principal = (float) $inv->amount;
             $penalty   = round($principal * self::EARLY_PENALTY / 100, 2);
             $payout    = $principal - $penalty;
 
-            $wallet->balance += $payout;
-            $wallet->save();
+            $wallet->credit($payout, "Early withdrawal (20% penalty): {$inv->machine->name}", 'machine_early_withdrawal');
 
             $inv->early_withdrawn = true;
             $inv->withdrawn       = true;
@@ -257,24 +243,9 @@ class MachineService
             $inv->status          = 'cancelled';
             $inv->save();
 
-            Transaction::create([
-                'user_id'       => $inv->user_id,
-                'wallet_id'     => $wallet->id,
-                'type'          => 'machine_early_withdrawal',
-                'amount'        => $payout,
-                'balance_after' => $wallet->balance,
-                'description'   => "Early withdrawal (20% penalty) · {$inv->machine->name}",
-                'reference'     => 'EARLY-' . $inv->id,
-                'status'        => 'completed',
-            ]);
-
             return $payout;
         });
     }
-
-    /* ============================================================
-     |  REFERRAL BONUS
-     ============================================================ */
 
     protected function payReferralBonus(User $user, float $amount): void
     {
@@ -286,24 +257,8 @@ class MachineService
         $bonus = round($amount * self::REFERRAL_RATE / 100, 2);
         if ($bonus <= 0) return;
 
-        $referrer->wallet->balance += $bonus;
-        $referrer->wallet->save();
-
-        Transaction::create([
-            'user_id'       => $referrer->id,
-            'wallet_id'     => $referrer->wallet->id,
-            'type'          => 'referral_bonus',
-            'amount'        => $bonus,
-            'balance_after' => $referrer->wallet->balance,
-            'description'   => "Referral bonus from {$user->name}",
-            'reference'     => 'REF-' . $user->id . '-' . now()->timestamp,
-            'status'        => 'completed',
-        ]);
+        $referrer->wallet->credit($bonus, "Referral bonus from {$user->name}", 'referral_bonus');
     }
-
-    /* ============================================================
-     |  STATS
-     ============================================================ */
 
     public function getDashboardStats(User $user): array
     {

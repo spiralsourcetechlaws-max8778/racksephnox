@@ -38,9 +38,9 @@ class Machine extends Model
         'staking_reward'     => 'float',
         'tier_multiplier'    => 'float',
         'is_active'          => 'boolean',
+        'duration_days'      => 'integer',
     ];
 
-    /* ---------- Relationships ---------- */
     public function vips()
     {
         return $this->hasMany(MachineVip::class);
@@ -56,13 +56,11 @@ class Machine extends Model
         return $this->hasMany(MachineInvestment::class)->where('status', 'active');
     }
 
-    /* ---------- Scopes ---------- */
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
     }
 
-    /* ---------- Helpers ---------- */
     public function getVipStartAmount(int $level): float
     {
         return (float) ($this->{"vip{$level}_start_amount"} ?? 0);
@@ -72,6 +70,66 @@ class Machine extends Model
     {
         return $this->vips()->where('level', $level)->first();
     }
+
+    /* ---------- API helper methods (missing before) ---------- */
+
+    public function getVIPAmounts(): array
+    {
+        return [
+            1 => (float) $this->vip1_start_amount,
+            2 => (float) $this->vip2_start_amount,
+            3 => (float) $this->vip3_start_amount,
+        ];
+    }
+
+    public function getStartAmountForVip(int $level): float
+    {
+        return (float) $this->{"vip{$level}_start_amount"} ?? 0;
+    }
+
+    public function getDailyProfit(float $amount, int $vipLevel = 1): float
+    {
+        $days = (int) ($this->duration_days ?: 14);
+        $totalProfit = $this->getTotalReturn($amount, $vipLevel) - $amount;
+        return $days > 0 ? round($totalProfit / $days, 2) : 0;
+    }
+
+    public function getTotalReturn(float $amount, int $vipLevel = 1): float
+    {
+        $vip = $this->getVipTier($vipLevel);
+        $rate = $vip && isset($vip->growth_rate)
+            ? (float) $vip->growth_rate
+            : (float) $this->growth_rate;
+        return round($amount * (1 + $rate / 100), 2);
+    }
+
+    public function getVIPDetails(): array
+    {
+        $details = [];
+        foreach ([1, 2, 3] as $level) {
+            $vip = $this->getVipTier($level);
+            $details[$level] = [
+                'level'          => $level,
+                'start_amount'   => $this->getStartAmountForVip($level),
+                'growth_rate'    => $vip->growth_rate ?? $this->growth_rate,
+                'duration_days'  => $vip->duration_days ?? $this->duration_days,
+                'bonus_multiplier' => $vip->bonus_multiplier ?? 1,
+            ];
+        }
+        return $details;
+    }
+
+    public function getStatistics(): array
+    {
+        return [
+            'total_invested'   => $this->total_invested,
+            'active_invested'  => $this->active_invested,
+            'investor_count'   => $this->investor_count,
+            'duration_days'    => $this->duration_days ?? 14,
+        ];
+    }
+
+    /* ---------- Accessors ---------- */
 
     public function getTotalInvestedAttribute(): float
     {
@@ -86,40 +144,5 @@ class Machine extends Model
     public function getInvestorCountAttribute(): int
     {
         return (int) $this->investments()->distinct('user_id')->count('user_id');
-    }
-
-    public function getRoiBadgeAttribute(): string
-    {
-        return '88% in 14 days';
-    }
-
-    public function getFrequencyAttribute(): int
-    {
-        return 888;
-    }
-
-    public function getPhiAttribute(): float
-    {
-        return 1.61803398875;
-    }
-
-    public function getLambdaAttribute(): float
-    {
-        return 1.27201964951;
-    }
-
-    public function getVipLevelsAttribute(): int
-    {
-        return 3;
-    }
-
-    /* ---------- Currency helper ---------- */
-    public function getFormattedVipAmountsAttribute(): array
-    {
-        return [
-            1 => number_format($this->vip1_start_amount, 0),
-            2 => number_format($this->vip2_start_amount, 0),
-            3 => number_format($this->vip3_start_amount, 0),
-        ];
     }
 }

@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
 
@@ -14,9 +15,6 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Register ALL custom middleware aliases here.
-        // Laravel 11+ treats this file as authoritative; if an alias
-        // is missing here, it throws 'Target class [x] does not exist'.
         $middleware->alias([
             'admin'            => \App\Http\Middleware\Admin::class,
             'role'             => \App\Http\Middleware\CheckRole::class,
@@ -29,21 +27,36 @@ return Application::configure(basePath: dirname(__DIR__))
             'mpesa.source'     => \App\Http\Middleware\VerifyMpesaSource::class,
         ]);
 
-        // Trust Render's load balancer
         $middleware->trustProxies(at: '*');
     })
+    ->withSchedule(function (Schedule $schedule) {
+        // ─── Machine investment returns ─────────────────────
+        $schedule->command('machine:accrue')->dailyAt('00:10');
+        $schedule->command('machine:accrue')->hourly(); // extra safety sweep
+
+        // ─── Lottery jobs ───────────────────────────────────
+        $schedule->job(new \App\Jobs\Lottery\UpdateTournamentRankings)->everyFiveMinutes();
+        $schedule->job(new \App\Jobs\Lottery\DistributeTournamentPrizes)->everyTenMinutes();
+        $schedule->job(new \App\Jobs\Lottery\CleanupLotterySpins)->hourly();
+        $schedule->job(new \App\Jobs\Lottery\UpdateLeaderboardCache)->everyMinute();
+        $schedule->job(new \App\Jobs\Lottery\WarmupLotteryCache)->everyTenMinutes();
+        $schedule->job(new \App\Jobs\Lottery\ProcessJackpotContributions)->everyMinute();
+        $schedule->job(new \App\Jobs\Lottery\CheckJackpotMustDrop)->everyFiveMinutes();
+        $schedule->job(new \App\Jobs\Lottery\ResetDailyMissions)->dailyAt('00:00');
+        $schedule->job(new \App\Jobs\Lottery\AwardStreakBonuses)->dailyAt('00:05');
+
+        // ─── Housekeeping ───────────────────────────────────
+        $schedule->command('cache:prune-stale-tags')->hourly();
+    })
     ->withExceptions(function (Exceptions $exceptions) {
-        // Handle 419 Session Expired gracefully
         $exceptions->render(function (TokenMismatchException $e, Request $request) {
             if ($request->expectsJson()) {
                 return response()->json([
-                    'message' => 'Your session has expired. Please refresh the page and log in again.',
+                    'message' => 'Session expired. Please log in again.',
                     'code'    => 'session_expired',
                 ], 419);
             }
 
-            return redirect()
-                ->route('login')
-                ->with('status', 'Your session expired. Please log in again.');
+            return redirect()->route('login')->with('status', 'Your session expired. Please log in again.');
         });
     })->create();
