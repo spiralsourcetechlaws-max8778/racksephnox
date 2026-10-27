@@ -1,5 +1,7 @@
 <?php
 
+$appUrl = rtrim(env('APP_URL', 'http://localhost'), '/');
+
 return [
     'environment' => env('MPESA_ENVIRONMENT', 'sandbox'),
 
@@ -30,9 +32,9 @@ return [
     ],
 
     'callback_urls' => [
-        'stk'        => env('MPESA_STK_CALLBACK_URL', url('/api/v1/mpesa/callback')),
-        'b2c_result' => env('MPESA_B2C_RESULT_URL', url('/api/v1/mpesa/b2c-result')),
-        'b2c_timeout' => env('MPESA_B2C_TIMEOUT_URL', url('/api/v1/mpesa/b2c-timeout')),
+        'stk'         => env('MPESA_STK_CALLBACK_URL', $appUrl . '/api/v1/mpesa/callback'),
+        'b2c_result'  => env('MPESA_B2C_RESULT_URL',   $appUrl . '/api/v1/mpesa/b2c-result'),
+        'b2c_timeout' => env('MPESA_B2C_TIMEOUT_URL',  $appUrl . '/api/v1/mpesa/b2c-timeout'),
     ],
 
     'limits' => [
