@@ -11,13 +11,22 @@ use Illuminate\Support\Facades\Schema;
  * every deploy prints an auditable state block into the Render log.
  *
  * Read-only. Never writes. Never throws unless the DB itself is down.
- * If the DB is down, entrypoint.sh wraps the call in `|| true` so the
- * deploy still proceeds to supervisord.
+ * If the DB is down, entrypoint.sh wraps the call in a non-fatal shell
+ * guard so the deploy still proceeds to supervisord.
+ *
+ * Sections:
+ *   1. seed_runs          — which seeders ran, timings, errors
+ *   2. trading_candles    — per-interval counts + close_time presence
+ *   3. btc_price_histories— row count, latest, currency column
+ *   4. schema drift       — columns the code needs, by table
+ *   5. admin users        — who has is_admin = 1, per-role
+ *   6. row counts         — one number per critical table
+ *   7. warnings summary   — collapsed list of anything flagged
  */
 class DeployVerify extends Command
 {
     protected $signature = 'deploy:verify';
-    protected $description = 'Print post-deploy audit: seed_runs, candle counts, schema drift, row counts';
+    protected $description = 'Print post-deploy audit: seed_runs, candle counts, schema drift, admins, row counts';
 
     private array $warnings = [];
 
@@ -25,13 +34,15 @@ class DeployVerify extends Command
     {
         $this->info('══════════════════════════════════════════════════════════════');
         $this->info('  POST-DEPLOY VERIFICATION  ·  ' . now()->toDateTimeString());
-        $this->info('  env: ' . app()->environment() . '  ·  commit: ' . substr(env('RENDER_GIT_COMMIT', env('GIT_COMMIT', 'unknown')), 0, 7));
+        $this->info('  env: ' . app()->environment()
+            . '  ·  commit: ' . substr(env('RENDER_GIT_COMMIT', env('GIT_COMMIT', 'unknown')), 0, 7));
         $this->info('══════════════════════════════════════════════════════════════');
 
         $this->checkSeedRuns();
         $this->checkCandles();
         $this->checkBtcPrices();
         $this->checkSchemaDrift();
+        $this->checkAdmins();
         $this->checkRowCounts();
 
         $this->info('');
@@ -76,13 +87,17 @@ class DeployVerify extends Command
 
         $failed = 0;
         foreach ($rows as $r) {
-            $name   = class_basename($r->seeder);
-            $ms     = $r->duration_ms ?? '?';
+            $name = class_basename($r->seeder);
+            $ms   = $r->duration_ms ?? '?';
             if ($r->status === 'ok') {
                 $this->line(sprintf('   ✅ %-42s %sms', $name, $ms));
             } else {
-                $this->error(sprintf('   ❌ %-42s %sms   %s',
-                    $name, $ms, substr((string) $r->error, 0, 80)));
+                $this->error(sprintf(
+                    '   ❌ %-42s %sms   %s',
+                    $name,
+                    $ms,
+                    substr((string) $r->error, 0, 80)
+                ));
                 $failed++;
             }
         }
@@ -126,7 +141,7 @@ class DeployVerify extends Command
 
         $total = 0;
         foreach ($counts as $c) {
-            $total += $c->n;
+            $total += (int) $c->n;
             $icon = $c->n > 0 ? '✅' : '⚠️ ';
             $this->line(sprintf('   %s %-4s %d', $icon, $c->interval, $c->n));
         }
@@ -146,8 +161,8 @@ class DeployVerify extends Command
             return;
         }
 
-        $count  = DB::table('btc_price_histories')->count();
-        $latest = DB::table('btc_price_histories')->orderByDesc('recorded_at')->value('recorded_at');
+        $count       = DB::table('btc_price_histories')->count();
+        $latest      = DB::table('btc_price_histories')->orderByDesc('recorded_at')->value('recorded_at');
         $hasCurrency = Schema::hasColumn('btc_price_histories', 'currency');
 
         $this->line("   rows               : {$count}");
@@ -177,6 +192,7 @@ class DeployVerify extends Command
             'investment_plans'    => ['name', 'min_amount', 'max_amount', 'daily_interest_rate', 'duration_days'],
             'machines'            => ['code', 'name', 'growth_rate', 'duration_days'],
             'lottery_symbols'     => ['name', 'display_name', 'icon'],
+            'users'               => ['email', 'password', 'is_admin', 'admin_role'],
         ];
 
         foreach ($expect as $table => $cols) {
@@ -196,7 +212,49 @@ class DeployVerify extends Command
         }
     }
 
-    /* ─── 5. row counts ────────────────────────────────────────── */
+    /* ─── 5. admin users ───────────────────────────────────────── */
+
+    private function checkAdmins(): void
+    {
+        $this->info('');
+        $this->info('── admin users ───────────────────────────────────────────────');
+
+        if (!Schema::hasTable('users')) {
+            $this->warn('   ⚠️  users table missing');
+            $this->warnings[] = 'users table missing';
+            return;
+        }
+
+        if (!Schema::hasColumn('users', 'is_admin')) {
+            $this->warn('   ⚠️  users.is_admin column missing — admin middleware will 403 everyone');
+            $this->warnings[] = 'users.is_admin column missing';
+            return;
+        }
+
+        $hasRole = Schema::hasColumn('users', 'admin_role');
+
+        $admins = $hasRole
+            ? DB::table('users')->where('is_admin', true)->select('email', 'admin_role')->orderBy('id')->get()
+            : DB::table('users')->where('is_admin', true)->select('email')->orderBy('id')->get();
+
+        if ($admins->isEmpty()) {
+            $this->error('   ❌ 0 admins — no one can access /admin');
+            $this->warnings[] = 'no admin users exist';
+            return;
+        }
+
+        foreach ($admins as $a) {
+            $role = $hasRole ? ($a->admin_role ?? '[null]') : '—';
+            $flag = ($hasRole && $a->admin_role === null) ? '⚠️ ' : '✅';
+            $this->line(sprintf('   %s %-40s %s', $flag, $a->email, $role));
+            if ($hasRole && $a->admin_role === null) {
+                $this->warnings[] = "{$a->email} is_admin=1 but admin_role=null";
+            }
+        }
+        $this->line('   total admins: ' . $admins->count());
+    }
+
+    /* ─── 6. row counts ────────────────────────────────────────── */
 
     private function checkRowCounts(): void
     {
@@ -218,7 +276,7 @@ class DeployVerify extends Command
                 $this->line(sprintf('   %-24s [missing]', $t));
                 continue;
             }
-            $n = DB::table($t)->count();
+            $n    = DB::table($t)->count();
             $icon = $n > 0 ? '  ' : '⚠️ ';
             $this->line(sprintf('   %s %-24s %d', $icon, $t, $n));
 
