@@ -25,7 +25,13 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // ============ SUPER ADMIN + SUPPORT: View users & KYC ============
     Route::middleware('role:super_admin,support')->group(function () {
         Route::get('users', [UserController::class, 'index'])->name('users.index');
-        Route::get('users/{user}', [UserController::class, 'show'])->name('users.show');
+
+        // whereNumber prevents /admin/users/create from being shadowed
+        // by this route when it appears earlier in the file. Without it,
+        // /admin/users/create resolves {user} = "create" → 404.
+        Route::get('users/{user}', [UserController::class, 'show'])
+            ->name('users.show')
+            ->whereNumber('user');
 
         Route::get('kyc', [KycController::class, 'index'])->name('kyc.index');
         Route::get('kyc/{document}', [KycController::class, 'show'])->name('kyc.show');
@@ -83,15 +89,16 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     // ============ SUPER ADMIN ONLY: Platform config ============
     Route::middleware('role:super_admin')->group(function () {
-        Route::resource('plans', InvestmentPlanController::class);
+        // except('show') — the controller has no show() method
+        Route::resource('plans', InvestmentPlanController::class)->except(['show']);
         Route::post('plans/export', [InvestmentPlanController::class, 'export'])->name('plans.export');
 
         Route::prefix('lottery')->name('lottery.')->group(function () {
             Route::get('/', [LotteryController::class, 'index'])->name('index');
             Route::get('/analytics', [LotteryAnalyticsController::class, 'index'])->name('analytics');
             Route::post('/rtp-simulate', [LotteryController::class, 'rtpSimulate'])->name('rtp-simulate');
-            Route::get('/export', [LotteryController::class, 'exportConfig'])->name('export');
-            Route::post('/import', [LotteryController::class, 'importConfig'])->name('import');
+            Route::get('/export', [LotteryController::class, 'export'])->name('export');
+            Route::post('/import', [LotteryController::class, 'importSymbols'])->name('import');
             Route::get('/symbols', [LotteryController::class, 'symbols'])->name('symbols');
             Route::post('/symbols', [LotteryController::class, 'updateSymbols'])->name('symbols.update');
             Route::get('/jackpots', [LotteryController::class, 'jackpots'])->name('jackpots');
