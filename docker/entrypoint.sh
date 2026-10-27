@@ -66,6 +66,18 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
+# ─── Post-deploy verification (non-fatal, informational) ────────
+# Every deploy prints an audit block: seed_runs, candle counts,
+# schema drift, row counts. Read-only. Safe to fail.
+echo ""
+echo "🔎 Post-deploy verification..."
+if php artisan deploy:verify; then
+    echo "✅ Verification complete."
+else
+    echo "⚠️  Verification command failed — deploy continues."
+fi
+echo ""
+
 # ─── Startup summary ────────────────────────────────────────────
 echo ""
 echo "🚀 Starting processes:"
