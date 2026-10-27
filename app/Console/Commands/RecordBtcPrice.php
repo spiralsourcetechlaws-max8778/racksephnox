@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Events\BtcPriceUpdated;
 use App\Models\BtcPriceHistory;
 use App\Models\TradingPair;
 use Illuminate\Console\Command;
@@ -38,9 +39,8 @@ class RecordBtcPrice extends Command
         Cache::put('btc_market_price', $price['kes'], 60);
         Cache::put('btc_market_price_usd', $price['usd'], 60);
 
-        // Broadcast to connected clients via Reverb
         try {
-            event(new \App\Events\BtcPriceUpdated($price['usd'], $price['kes']));
+            event(new BtcPriceUpdated($price['usd'], $price['kes']));
         } catch (\Throwable $e) {
             Log::warning('BtcPriceUpdated broadcast failed', ['error' => $e->getMessage()]);
         }
@@ -69,7 +69,6 @@ class RecordBtcPrice extends Command
             $usd = (float) ($res->json('price') ?? 0);
             if ($usd <= 0) return null;
 
-            // Use latest exchange rate if available, else default
             $rate = (float) Cache::get('usd_kes_rate', 0);
             if ($rate <= 0) {
                 $rate = $this->fetchUsdKesRate();
@@ -99,14 +98,17 @@ class RecordBtcPrice extends Command
         } catch (\Throwable $e) {
             Log::warning('USD/KES rate fetch failed', ['error' => $e->getMessage()]);
         }
-        return 130.0; // fallback
+        return 130.0;
     }
 
     protected function fallbackPrice(): ?array
     {
         $last = BtcPriceHistory::latest('recorded_at')->first();
         if ($last) {
-            return ['usd' => (float) $last->price, 'kes' => (float) ($last->price_kes ?? $last->price * 130)];
+            return [
+                'usd' => (float) $last->price,
+                'kes' => (float) ($last->price_kes ?? $last->price * 130),
+            ];
         }
 
         $pair = TradingPair::where('symbol', 'BTCUSDT')->first();

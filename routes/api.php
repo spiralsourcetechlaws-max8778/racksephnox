@@ -34,6 +34,14 @@ Route::prefix('v1')->group(function () {
     Route::post('/mpesa/callback', [MpesaController::class, 'callback'])
         ->middleware('mpesa.source')
         ->name('api.mpesa.callback');
+
+    Route::post('/mpesa/b2c-result', [MpesaController::class, 'b2cResult'])
+        ->middleware('mpesa.source')
+        ->name('api.mpesa.b2c-result');
+
+    Route::post('/mpesa/b2c-timeout', [MpesaController::class, 'b2cTimeout'])
+        ->middleware('mpesa.source')
+        ->name('api.mpesa.b2c-timeout');
         
     Route::get('/crypto/prices', [CryptoController::class, 'prices']);
     Route::get('/crypto/history', [CryptoController::class, 'history']);

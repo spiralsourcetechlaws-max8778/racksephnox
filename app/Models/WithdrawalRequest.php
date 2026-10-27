@@ -10,20 +10,20 @@ class WithdrawalRequest extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 
-        'amount', 
-        'fee', 
-        'net_amount', 
-        'phone', 
-        'status', 
+        'user_id',
+        'amount',
+        'fee',
+        'net_amount',
+        'phone',
+        'status',
         'admin_notes',
-        'bank_account_id' // <-- ADDED: This was missing and would break bank withdrawals
+        'bank_account_id',
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
-        'fee' => 'decimal:2',
-        'net_amount' => 'decimal:2',
+        'amount'     => 'float',
+        'fee'        => 'float',
+        'net_amount' => 'float',
     ];
 
     public function user()
@@ -31,9 +31,13 @@ class WithdrawalRequest extends Model
         return $this->belongsTo(User::class);
     }
 
-    // Added relationship so the admin panel can see the bank details
     public function bankAccount()
     {
         return $this->belongsTo(UserBankAccount::class, 'bank_account_id');
     }
+
+    public function scopePending($q)    { return $q->where('status', 'pending'); }
+    public function scopeProcessing($q) { return $q->where('status', 'processing'); }
+    public function scopeCompleted($q)  { return $q->where('status', 'completed'); }
+    public function scopeRejected($q)   { return $q->where('status', 'rejected'); }
 }

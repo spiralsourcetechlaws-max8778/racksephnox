@@ -55,6 +55,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // ─── Housekeeping ───────────────────────────────────
         $schedule->command('cache:prune-stale-tags')->hourly();
+
+        // ─── M-Pesa reconciliation (query stuck STK) ────────
+        $schedule->command('mpesa:reconcile')->everyTenMinutes();
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (TokenMismatchException $e, Request $request) {

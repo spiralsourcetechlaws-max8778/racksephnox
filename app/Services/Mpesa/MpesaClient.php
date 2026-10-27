@@ -2,60 +2,128 @@
 
 namespace App\Services\Mpesa;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class MpesaClient
 {
-    protected $config;
-    protected $baseUrl;
+    protected array $config;
+    protected string $env;
+    protected array $urls;
+    protected int $timeout = 20;
 
     public function __construct()
     {
         $this->config = config('mpesa');
-        $env = $this->config['environment'];
-        $this->baseUrl = $this->config['urls'][$env];
+        $this->env    = $this->config['environment'] ?? 'sandbox';
+        $this->urls   = $this->config['urls'][$this->env] ?? [];
     }
 
-    public function getAccessToken()
+    /**
+     * Get OAuth access token, cached for 55 minutes (Safaricom gives 1h).
+     */
+    public function getAccessToken(): string
     {
-        return Cache::remember('mpesa_access_token', 3500, function () {
-            $response = Http::withBasicAuth(
-                $this->config['consumer_key'],
-                $this->config['consumer_secret']
-            )->get($this->baseUrl['oauth']);
+        $cacheKey = "mpesa_oauth_{$this->env}";
 
-            if ($response->failed()) {
-                \Log::error('M-Pesa token error: ' . $response->body());
-                throw new \Exception('Failed to get M-Pesa access token');
+        $cached = Cache::get($cacheKey);
+        if ($cached) return $cached;
+
+        $key    = $this->config['consumer_key'] ?? '';
+        $secret = $this->config['consumer_secret'] ?? '';
+        $url    = $this->urls['oauth'] ?? null;
+
+        if (!$key || !$secret) {
+            throw new \RuntimeException('M-Pesa consumer_key/consumer_secret not configured');
+        }
+        if (!$url) {
+            throw new \RuntimeException('M-Pesa OAuth URL missing for env ' . $this->env);
+        }
+
+        try {
+            $res = Http::timeout($this->timeout)
+                ->withBasicAuth($key, $secret)
+                ->get($url);
+
+            if ($res->failed()) {
+                Log::error('M-Pesa OAuth failed', [
+                    'status' => $res->status(),
+                    'body'   => substr($res->body(), 0, 500),
+                ]);
+                throw new \RuntimeException('M-Pesa OAuth failed: HTTP ' . $res->status());
             }
 
-            return $response->json('access_token');
-        });
+            $token = $res->json('access_token');
+            if (!$token) {
+                throw new \RuntimeException('M-Pesa OAuth returned no access_token');
+            }
+
+            Cache::put($cacheKey, $token, 3300);
+            return $token;
+
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('M-Pesa OAuth connection failed', ['error' => $e->getMessage()]);
+            throw new \RuntimeException('Cannot reach M-Pesa OAuth endpoint');
+        }
     }
 
-    public function generateStkPassword($timestamp)
+    /**
+     * STK password = base64(Shortcode + Passkey + Timestamp).
+     */
+    public function generateStkPassword(string $timestamp): string
     {
-        $shortcode = $this->config['shortcode'];
-        $passkey = $this->config['passkey'];
+        $shortcode = $this->config['shortcode'] ?? '';
+        $passkey   = $this->config['passkey'] ?? '';
         return base64_encode($shortcode . $passkey . $timestamp);
     }
 
-    public function request($endpoint, $data)
+    /**
+     * Make a signed POST to any M-Pesa endpoint.
+     */
+    public function post(string $endpointKey, array $data): array
     {
-        $token = $this->getAccessToken();
-        $url = $this->baseUrl[$endpoint] ?? $endpoint;
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-            'Content-Type' => 'application/json',
-        ])->post($url, $data);
-
-        if ($response->failed()) {
-            \Log::error('M-Pesa API error: ' . $response->body());
-            throw new \Exception('M-Pesa API error: ' . $response->body());
+        $url = $this->urls[$endpointKey] ?? null;
+        if (!$url) {
+            throw new \RuntimeException("M-Pesa URL not configured for endpoint: {$endpointKey}");
         }
 
-        return $response->json();
+        $token = $this->getAccessToken();
+
+        try {
+            $res = Http::timeout($this->timeout)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ])
+                ->post($url, $data);
+
+            $json = $res->json() ?? [];
+
+            if ($res->failed()) {
+                Log::error('M-Pesa API error', [
+                    'endpoint' => $endpointKey,
+                    'status'   => $res->status(),
+                    'response' => $json,
+                ]);
+                throw new \RuntimeException(
+                    'M-Pesa API error: ' . ($json['errorMessage'] ?? $json['ResponseDescription'] ?? 'HTTP ' . $res->status())
+                );
+            }
+
+            return $json;
+
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('M-Pesa API connection failed', [
+                'endpoint' => $endpointKey,
+                'error'    => $e->getMessage(),
+            ]);
+            throw new \RuntimeException('Cannot reach M-Pesa API endpoint');
+        }
+    }
+
+    public function isSandbox(): bool
+    {
+        return $this->env === 'sandbox';
     }
 }

@@ -10,11 +10,17 @@ class DepositRequest extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'phone_number', 'amount', 'transaction_reference', 'status', 'admin_notes', 'verified_at'
+        'user_id',
+        'phone_number',
+        'amount',
+        'transaction_reference',
+        'status',
+        'admin_notes',
+        'verified_at',
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
+        'amount'      => 'float',
         'verified_at' => 'datetime',
     ];
 
@@ -22,4 +28,8 @@ class DepositRequest extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function scopePending($q)   { return $q->where('status', 'pending'); }
+    public function scopeApproved($q)  { return $q->where('status', 'approved'); }
+    public function scopeRejected($q)  { return $q->where('status', 'rejected'); }
 }

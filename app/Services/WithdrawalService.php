@@ -5,45 +5,39 @@ namespace App\Services;
 class WithdrawalService
 {
     /**
-     * Calculate withdrawal fee based on amount
-     * Golden Tiered Fee Structure
+     * Fee = percentage of amount, clamped between min and max.
+     * Defaults: 1% of amount, min 10 KES, max 100 KES.
      */
-    public static function calculateFee($amount)
+    public static function calculateFee(float $amount): float
     {
-        $amount = (float) $amount;
-        
-        if ($amount >= 530 && $amount <= 2500) return 26;
-        if ($amount >= 2501 && $amount <= 8000) return 52;
-        if ($amount >= 8001 && $amount <= 16000) return 107;
-        if ($amount >= 16001 && $amount <= 32000) return 1008;
-        if ($amount >= 32001 && $amount <= 64000) return 3500;
-        if ($amount >= 64001 && $amount <= 132000) return 10000;
-        if ($amount >= 132001 && $amount <= 500000) return 25000;
-        if ($amount >= 500001 && $amount <= 1000000) return 88000;
-        
-        return 0;
+        $config = config('mpesa.fees', []);
+        $percent = (float) ($config['withdrawal_percent'] ?? 1.0);
+        $min     = (float) ($config['withdrawal_min'] ?? 10);
+        $max     = (float) ($config['withdrawal_max'] ?? 100);
+
+        if ($amount < 1) return 0.0;
+
+        $fee = $amount * ($percent / 100);
+        return round(max($min, min($max, $fee)), 2);
     }
 
-    /**
-     * Validate withdrawal amount
-     */
-    public static function validateWithdrawal($amount)
+    public static function validateWithdrawal(float $amount): array
     {
-        if ($amount < 530) {
-            return ['valid' => false, 'message' => 'Minimum withdrawal amount is KES 530'];
+        $limits = config('mpesa.limits', []);
+        $min = (float) ($limits['min_withdrawal'] ?? 100);
+        $max = (float) ($limits['max_withdrawal'] ?? 150000);
+
+        if ($amount < $min) {
+            return ['valid' => false, 'message' => 'Minimum withdrawal is KES ' . number_format($min)];
         }
-        if ($amount > 1000000) {
-            return ['valid' => false, 'message' => 'Maximum withdrawal amount is KES 1,000,000 per request'];
+        if ($amount > $max) {
+            return ['valid' => false, 'message' => 'Maximum withdrawal is KES ' . number_format($max)];
         }
-        return ['valid' => true];
+        return ['valid' => true, 'message' => ''];
     }
 
-    /**
-     * Get net amount after fee
-     */
-    public static function getNetAmount($amount)
+    public static function getNetAmount(float $amount): float
     {
-        $fee = self::calculateFee($amount);
-        return $amount - $fee;
+        return round($amount - self::calculateFee($amount), 2);
     }
 }
