@@ -71,6 +71,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/analytics', [TradingController::class, 'analytics'])->name('analytics');
         Route::post('/transfer/in', [TradingController::class, 'transferToTrading'])->name('transfer.in');
         Route::post('/transfer/out', [TradingController::class, 'transferFromTrading'])->name('transfer.out');
+        Route::get('/price', [TradingController::class, 'price'])->name('price');
+        Route::get('/candles/{interval}', [TradingController::class, 'candles'])->name('candles');
     });
 
     // Social Trading

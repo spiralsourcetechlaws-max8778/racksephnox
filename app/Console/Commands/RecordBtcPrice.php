@@ -38,6 +38,13 @@ class RecordBtcPrice extends Command
         Cache::put('btc_market_price', $price['kes'], 60);
         Cache::put('btc_market_price_usd', $price['usd'], 60);
 
+        // Broadcast to connected clients via Reverb
+        try {
+            event(new \App\Events\BtcPriceUpdated($price['usd'], $price['kes']));
+        } catch (\Throwable $e) {
+            Log::warning('BtcPriceUpdated broadcast failed', ['error' => $e->getMessage()]);
+        }
+
         $this->info(sprintf(
             '✅ BTC price recorded: $%s USD · KES %s',
             number_format($price['usd'], 2),

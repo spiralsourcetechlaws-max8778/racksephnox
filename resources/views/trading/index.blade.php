@@ -41,6 +41,49 @@
             </div>
         </div>
 
+        {{-- WALLET ⇄ TRADING TRANSFER --}}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="card-golden p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <p class="text-xs text-gold-400 uppercase tracking-widest">KES Wallet</p>
+                        <p class="text-lg font-bold text-gold">KES {{ number_format($walletBalance ?? 0, 2) }}</p>
+                    </div>
+                    <i class="fas fa-wallet text-gold/40"></i>
+                </div>
+                <form method="POST" action="{{ route('trading.transfer.in') }}" class="flex gap-2 mt-2">
+                    @csrf
+                    <input type="number" name="amount" min="1" step="1" required
+                           placeholder="Amount to transfer"
+                           class="input-golden flex-1 text-sm">
+                    <button type="submit" class="btn-golden text-xs px-3 py-1.5 whitespace-nowrap">
+                        Deposit →
+                    </button>
+                </form>
+                <p class="text-[10px] text-gold-400/50 mt-1">Move funds from wallet to trading</p>
+            </div>
+
+            <div class="card-golden p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <p class="text-xs text-gold-400 uppercase tracking-widest">Trading Account</p>
+                        <p class="text-lg font-bold text-gold">KES {{ number_format($tradingAccount->balance ?? 0, 2) }}</p>
+                    </div>
+                    <i class="fas fa-chart-line text-gold/40"></i>
+                </div>
+                <form method="POST" action="{{ route('trading.transfer.out') }}" class="flex gap-2 mt-2">
+                    @csrf
+                    <input type="number" name="amount" min="1" step="1" required
+                           placeholder="Amount to withdraw"
+                           class="input-golden flex-1 text-sm">
+                    <button type="submit" class="btn-outline-silver text-xs px-3 py-1.5 whitespace-nowrap">
+                        ← Withdraw
+                    </button>
+                </form>
+                <p class="text-[10px] text-gold-400/50 mt-1">Move funds from trading to wallet</p>
+            </div>
+        </div>
+
         {{-- FLASH --}}
         @if(session('success'))
             <div class="mb-4 bg-green-500/20 border border-green-500/40 rounded-xl p-3 text-green-300 text-sm">
@@ -772,4 +815,11 @@
     document.head.appendChild(style);
 })();
 </script>
+
+{{-- Trading Live Bridge --}}
+<script>
+    window.TRADING_INTERVAL = '1h';
+    window.TRADING_INITIAL_PRICE = '{{ $btcPrice ?? 0 }}';
+</script>
+<script src="{{ asset('js/trading-live.js') }}"></script>
 @endsection

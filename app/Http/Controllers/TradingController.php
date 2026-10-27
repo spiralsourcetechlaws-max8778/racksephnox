@@ -180,4 +180,12 @@ class TradingController extends Controller
             return response()->json([], 500);
         }
     }
+
+    public function price()
+    {
+        return response()->json([
+            'price_kes' => $this->engine->getMarketPrice(),
+            'price_usd' => (float) \Cache::get('btc_market_price_usd', 0),
+        ]);
+    }
 }
