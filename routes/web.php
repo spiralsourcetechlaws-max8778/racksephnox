@@ -23,22 +23,16 @@ require __DIR__.'/auth.php';
 require __DIR__.'/admin.php';
 require __DIR__.'/lottery.php';
 
-// Public home
 Route::get('/', function () {
     return view('welcome');
 })->name('home');
 
-// Legal pages
 Route::get('/terms', [LegalPagesController::class, 'terms'])->name('legal.terms');
 Route::get('/privacy', [LegalPagesController::class, 'privacy'])->name('legal.privacy');
 Route::get('/guide', [GuideController::class, 'index'])->name('guide');
-
-// Language switcher
 Route::get('/lang/{locale}', [LanguageController::class, 'switch'])->name('lang.switch');
 
-// Authenticated & verified routes
 Route::middleware(['auth', 'verified'])->group(function () {
-    // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Profile
@@ -50,7 +44,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/profile/bank-account', [ProfileController::class, 'updateBankAccount'])->name('profile.bank-account.update');
     Route::get('/api/profile-data', [ProfileController::class, 'apiData'])->name('profile.api.data');
 
-    // Investments (legacy + unified)
+    // Investments (legacy)
     Route::get('/investments', [InvestmentController::class, 'index'])->name('investments.index');
     Route::get('/investments/{id}', [InvestmentController::class, 'show'])->name('investments.show');
     Route::post('/investments', [InvestmentController::class, 'redirectToMachines'])->name('investments.store');
@@ -66,7 +60,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/kyc', [KycController::class, 'index'])->name('kyc');
     Route::post('/kyc/upload', [KycController::class, 'upload'])->name('kyc.upload');
 
-    // Trading (advanced)
+    // Trading
     Route::prefix('trading')->name('trading.')->group(function () {
         Route::get('/', [TradingController::class, 'index'])->name('index');
         Route::post('/buy', [TradingController::class, 'buy'])->name('buy');
@@ -75,6 +69,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/order-book', [TradingController::class, 'orderBook'])->name('order-book');
         Route::get('/candles/{interval}', [TradingController::class, 'candles'])->name('candles');
         Route::get('/analytics', [TradingController::class, 'analytics'])->name('analytics');
+        Route::post('/transfer/in', [TradingController::class, 'transferToTrading'])->name('transfer.in');
+        Route::post('/transfer/out', [TradingController::class, 'transferFromTrading'])->name('transfer.out');
     });
 
     // Social Trading
@@ -93,20 +89,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Referrals
     Route::get('/referrals', [ReferralController::class, 'index'])->name('referrals');
 
-    // Deposit (simple form — deposit.form/deposit.submit)
+    // Deposits
     Route::get('/deposit', [DepositController::class, 'form'])->name('deposit.form');
     Route::post('/deposit', [DepositController::class, 'submit'])->name('deposit.submit');
 
-    // Withdrawal (simple form — withdrawal.form/withdrawal.submit)
+    // Withdrawals
     Route::get('/withdraw', [WithdrawalController::class, 'form'])->name('withdrawal.form');
     Route::post('/withdraw', [WithdrawalController::class, 'submit'])->name('withdrawal.submit');
 
-    // M-Pesa STK push deposit / B2C withdrawal
-    // FIX: wallet.blade.php already references route('mpesa.deposit') and
-    // route('mpesa.withdraw') — without these routes, /wallet throws
-    // RouteNotFoundException for any authenticated user.
-    // MpesaController methods exist: showDepositForm, initiateDeposit,
-    // showWithdrawalForm, initiateWithdrawal.
+    // M-Pesa
     Route::prefix('mpesa')->name('mpesa.')->group(function () {
         Route::get('/deposit', [MpesaController::class, 'showDepositForm'])->name('deposit');
         Route::post('/deposit/initiate', [MpesaController::class, 'initiateDeposit'])->name('deposit.initiate');
@@ -117,7 +108,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Bank Accounts
     Route::resource('bank-accounts', BankAccountController::class)->except(['show']);
 
-    // Notifications (web)
+    // Notifications
     Route::prefix('notifications')->name('notifications.')->group(function () {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
         Route::post('/mark-all-read', [NotificationController::class, 'markAllRead'])->name('markAllRead');
@@ -128,7 +119,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/preferences', [NotificationController::class, 'updatePreferences'])->name('preferences.update');
     });
 
-    // ==================== LOANS DOMAIN ====================
+    // Loans
     Route::prefix('loans')->name('loans.')->group(function () {
         Route::get('/', [App\Http\Controllers\LoanController::class, 'index'])->name('index');
         Route::get('/apply/{product}', [App\Http\Controllers\LoanController::class, 'create'])->name('apply');
@@ -139,20 +130,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{loan}/cancel', [App\Http\Controllers\LoanController::class, 'cancel'])->name('cancel');
     });
 
-    // Machines (web)
+    // Machines — ORDER MATTERS: specific routes before wildcard {code}
     Route::prefix('machines')->name('machines.')->group(function () {
         Route::get('/', [MachineController::class, 'index'])->name('index');
-        Route::get('/{code}', [MachineController::class, 'show'])->name('show');
-        Route::post('/{machine}/invest', [MachineController::class, 'invest'])->name('invest');
         Route::get('/my-investments', [MachineController::class, 'myInvestments'])->name('my-investments');
-        Route::post('/{investment}/early-withdraw', [MachineController::class, 'earlyWithdraw'])->name('early-withdraw');
         Route::get('/status/{investment}', [MachineController::class, 'status'])->name('status');
-    });
-});
-
-// Admin Subdomain Redirect
-Route::domain('admin.racksephnox-empire.de5.net')->group(function () {
-    Route::get('/', function () {
-        return redirect('/admin');
+        Route::post('/{investment}/early-withdraw', [MachineController::class, 'earlyWithdraw'])->name('early-withdraw');
+        Route::post('/{machine}/invest', [MachineController::class, 'invest'])->name('invest');
+        Route::get('/{code}', [MachineController::class, 'show'])->name('show');
     });
 });

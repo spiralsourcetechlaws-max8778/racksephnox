@@ -2,70 +2,27 @@
 
 namespace App\Console\Commands;
 
-use App\Models\MachineInvestment;
+use App\Services\MachineService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class AccrueMachineProfits extends Command
 {
-    protected $signature = 'machines:accrue-profits';
-    protected $description = 'Accrue daily profits for active machine investments';
+    protected $signature = 'machine:accrue';
+    protected $description = 'Credit daily profit to all active machine investments';
 
-    public function handle()
+    public function handle(MachineService $service): int
     {
         $this->info('Starting daily profit accrual...');
 
-        $investments = MachineInvestment::where('status', 'active')
-            ->where('end_date', '>=', now())
-            ->get();
-
-        $this->info("Found {$investments->count()} active investments");
-
-        $totalAccrued = 0;
-        $count = 0;
-
-        foreach ($investments as $investment) {
-            $lastProfitDate = $investment->last_profit_date ? \Carbon\Carbon::parse($investment->last_profit_date) : null;
-
-            if ($lastProfitDate && $lastProfitDate->isToday()) {
-                $this->line("Already accrued today for investment #{$investment->id}");
-                continue;
-            }
-
-            $wallet = $investment->user->wallet;
-            if (!$wallet) {
-                $this->error("User {$investment->user_id} has no wallet");
-                continue;
-            }
-
-            // Accrue profit
-            $investment->profit_credited += $investment->daily_profit;
-            $investment->last_profit_date = now();
-            $investment->save();
-
-            // Credit wallet
-            $wallet->increment('balance', $investment->daily_profit);
-
-            // Record transaction
-            $investment->user->transactions()->create([
-                'user_id' => $investment->user_id,
-                'wallet_id' => $wallet->id,
-                'type' => 'machine_interest',
-                'amount' => $investment->daily_profit,
-                'status' => 'completed',
-                'description' => "Daily profit from {$investment->machine->name} (VIP {$investment->vip_level})",
-                'balance_after' => $wallet->balance,
-            ]);
-
-            $totalAccrued += $investment->daily_profit;
-            $count++;
-
-            $this->line("Accrued KES " . number_format($investment->daily_profit, 2) . " for investment #{$investment->id}");
+        try {
+            $count = $service->accrueDailyProfits();
+            $this->info("✅ Credited {$count} investment(s)");
+            \Log::info('machine:accrue completed', ['credited' => $count]);
+            return self::SUCCESS;
+        } catch (\Throwable $e) {
+            $this->error('❌ Failed: ' . $e->getMessage());
+            \Log::error('machine:accrue failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return self::FAILURE;
         }
-
-        $this->info("Completed! Accrued KES " . number_format($totalAccrued, 2) . " for {$count} investments.");
-        Log::info("Machine profits accrued", ['count' => $count, 'total' => $totalAccrued]);
-
-        return Command::SUCCESS;
     }
 }

@@ -30,11 +30,19 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
     })
     ->withSchedule(function (Schedule $schedule) {
-        // ─── Machine investment returns ─────────────────────
+        // ─── Machines ───────────────────────────────────────
         $schedule->command('machine:accrue')->dailyAt('00:10');
-        $schedule->command('machine:accrue')->hourly(); // extra safety sweep
 
-        // ─── Lottery jobs ───────────────────────────────────
+        // ─── Trading ────────────────────────────────────────
+        $schedule->command('trading:record-btc-price')->everyMinute();
+        $schedule->command('trading:sync-candles --interval=1m')->everyFiveMinutes();
+        $schedule->command('trading:sync-candles --interval=5m')->everyFifteenMinutes();
+        $schedule->command('trading:sync-candles --interval=1h')->hourly();
+        $schedule->command('trading:sync-candles --interval=4h')->everyFourHours();
+        $schedule->command('trading:sync-candles --interval=1d')->dailyAt('00:30');
+        $schedule->command('trading:match-orders')->everyMinute();
+
+        // ─── Lottery ────────────────────────────────────────
         $schedule->job(new \App\Jobs\Lottery\UpdateTournamentRankings)->everyFiveMinutes();
         $schedule->job(new \App\Jobs\Lottery\DistributeTournamentPrizes)->everyTenMinutes();
         $schedule->job(new \App\Jobs\Lottery\CleanupLotterySpins)->hourly();
@@ -51,12 +59,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (TokenMismatchException $e, Request $request) {
             if ($request->expectsJson()) {
-                return response()->json([
-                    'message' => 'Session expired. Please log in again.',
-                    'code'    => 'session_expired',
-                ], 419);
+                return response()->json(['message' => 'Session expired', 'code' => 'session_expired'], 419);
             }
-
-            return redirect()->route('login')->with('status', 'Your session expired. Please log in again.');
+            return redirect()->route('login')->with('status', 'Your session expired.');
         });
     })->create();

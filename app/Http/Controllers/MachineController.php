@@ -17,7 +17,6 @@ class MachineController extends Controller
         $this->service = $service;
     }
 
-    /* ---------- INDEX ---------- */
     public function index()
     {
         $machines = $this->service->getActiveMachines();
@@ -42,23 +41,18 @@ class MachineController extends Controller
         return view('machines.index', compact('machines', 'stats', 'userStats'));
     }
 
-    /* ---------- SHOW ---------- */
     public function show(string $code)
     {
         $machine = $this->service->getMachineByCode($code);
         $vips    = $this->service->getVipTiers($machine);
 
         $userInvestments = Auth::check()
-            ? MachineInvestment::forUser(Auth::id())
-                ->where('machine_id', $machine->id)
-                ->latest()
-                ->get()
+            ? MachineInvestment::forUser(Auth::id())->where('machine_id', $machine->id)->latest()->get()
             : collect();
 
         return view('machines.show', compact('machine', 'vips', 'userInvestments'));
     }
 
-    /* ---------- INVEST ---------- */
     public function invest(Request $request, Machine $machine)
     {
         $validated = $request->validate([
@@ -76,15 +70,17 @@ class MachineController extends Controller
 
             return redirect()
                 ->route('machines.my-investments')
-                ->with('success', "Investment of KES " . number_format($investment->amount, 2)
-                    . " in {$machine->name} VIP {$investment->vip_level} created. "
-                    . "Daily profit: KES " . number_format($investment->daily_profit, 2));
-        } catch (\Throwable $e) {
+                ->with('success', 'Investment of KES ' . number_format($investment->amount, 2)
+                    . ' in ' . $machine->name . ' VIP ' . $investment->vip_level . ' created. '
+                    . 'Daily profit: KES ' . number_format($investment->daily_profit, 2));
+        } catch (\RuntimeException $e) {
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        } catch (\Throwable $e) {
+            \Log::error('Web machine invest failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return back()->withErrors(['error' => 'Investment failed. Please try again or contact support.'])->withInput();
         }
     }
 
-    /* ---------- MY INVESTMENTS ---------- */
     public function myInvestments()
     {
         $investments = MachineInvestment::with('machine')
@@ -97,7 +93,6 @@ class MachineController extends Controller
         return view('machines.my-investments', compact('investments', 'stats'));
     }
 
-    /* ---------- EARLY WITHDRAW ---------- */
     public function earlyWithdraw(MachineInvestment $investment)
     {
         if ($investment->user_id !== Auth::id()) {
@@ -112,10 +107,9 @@ class MachineController extends Controller
         }
     }
 
-    /* ---------- STATUS (JSON) ---------- */
     public function status(MachineInvestment $investment)
     {
-        if ($investment->user_id !== Auth::id() && !Auth::user()->is_admin) {
+        if ($investment->user_id !== Auth::id() && !(Auth::user()->is_admin ?? false)) {
             abort(403);
         }
 

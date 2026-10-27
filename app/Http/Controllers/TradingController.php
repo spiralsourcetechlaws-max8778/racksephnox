@@ -7,6 +7,7 @@ use App\Models\TradingAccount;
 use App\Models\TradingPair;
 use App\Services\Trading\ChartService;
 use App\Services\Trading\TradingEngine;
+use App\Services\Trading\WalletTradingBridge;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +17,7 @@ class TradingController extends Controller
     protected TradingEngine $engine;
     protected TradingPair $pair;
     protected ChartService $chart;
+    protected WalletTradingBridge $bridge;
 
     public function __construct()
     {
@@ -33,6 +35,7 @@ class TradingController extends Controller
 
         $this->engine = new TradingEngine($this->pair);
         $this->chart  = new ChartService();
+        $this->bridge = new WalletTradingBridge();
     }
 
     public function index()
@@ -60,10 +63,35 @@ class TradingController extends Controller
             ->get();
 
         $orderBook = $this->engine->getOrderBook();
+        $walletBalance = (float) ($user->wallet?->balance ?? 0);
 
         return view('trading.index', compact(
-            'tradingAccount', 'btcPrice', 'openOrders', 'orderHistory', 'orderBook'
+            'tradingAccount', 'btcPrice', 'openOrders', 'orderHistory', 'orderBook', 'walletBalance'
         ));
+    }
+
+    public function transferToTrading(Request $request)
+    {
+        $request->validate(['amount' => 'required|numeric|min:1']);
+
+        try {
+            $this->bridge->walletToTrading(Auth::user(), (float) $request->amount);
+            return back()->with('success', 'KES ' . number_format($request->amount, 2) . ' transferred to trading account.');
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    public function transferFromTrading(Request $request)
+    {
+        $request->validate(['amount' => 'required|numeric|min:1']);
+
+        try {
+            $this->bridge->tradingToWallet(Auth::user(), (float) $request->amount);
+            return back()->with('success', 'KES ' . number_format($request->amount, 2) . ' transferred to wallet.');
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
     }
 
     public function buy(Request $request)
@@ -72,6 +100,7 @@ class TradingController extends Controller
             'amount_btc'  => 'required|numeric|min:' . $this->pair->min_trade_amount,
             'order_type'  => 'required|in:market,limit,stop',
             'price'       => 'required_if:order_type,limit,stop|nullable|numeric|min:0',
+            'stop_price'  => 'nullable|numeric|min:0',
             'take_profit' => 'nullable|numeric|min:0',
             'stop_loss'   => 'nullable|numeric|min:0',
         ]);
@@ -98,6 +127,7 @@ class TradingController extends Controller
             'amount_btc'  => 'required|numeric|min:' . $this->pair->min_trade_amount,
             'order_type'  => 'required|in:market,limit,stop',
             'price'       => 'required_if:order_type,limit,stop|nullable|numeric|min:0',
+            'stop_price'  => 'nullable|numeric|min:0',
             'take_profit' => 'nullable|numeric|min:0',
             'stop_loss'   => 'nullable|numeric|min:0',
         ]);
@@ -120,7 +150,7 @@ class TradingController extends Controller
     public function cancelOrder(TradeOrder $order)
     {
         if ($order->user_id !== Auth::id() || !in_array($order->status, ['pending', 'partial'])) {
-            return back()->withErrors('Cannot cancel this order.');
+            return back()->withErrors(['error' => 'Cannot cancel this order.']);
         }
         try {
             $this->engine->cancelOrder($order);
@@ -142,23 +172,12 @@ class TradingController extends Controller
             $interval = '1h';
         }
 
-        $candles = $this->chart->getCandles($this->pair->id, $interval, 500);
-
-        $payload = $candles->map(function ($c) {
-            $ts = $c->open_time instanceof \Carbon\Carbon
-                ? $c->open_time->timestamp
-                : strtotime((string) $c->open_time);
-
-            return [
-                'time'   => (int) $ts,
-                'open'   => (float) $c->open,
-                'high'   => (float) $c->high,
-                'low'    => (float) $c->low,
-                'close'  => (float) $c->close,
-                'volume' => (float) ($c->volume ?? 0),
-            ];
-        })->values();
-
-        return response()->json($payload);
+        try {
+            $candles = $this->chart->getCandles($this->pair->id, $interval, 500);
+            return response()->json($candles);
+        } catch (\Throwable $e) {
+            \Log::error('Candles fetch failed', ['interval' => $interval, 'error' => $e->getMessage()]);
+            return response()->json([], 500);
+        }
     }
 }

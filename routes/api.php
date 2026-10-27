@@ -66,6 +66,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/buy', [TradingController::class, 'buy']);
             Route::post('/sell', [TradingController::class, 'sell']);
             Route::get('/orders', [TradingController::class, 'orders']);
+            Route::get('/candles/{interval}', [TradingController::class, 'candles']);
+            Route::get('/order-book', [TradingController::class, 'orderBook']);
+            Route::post('/transfer/in', [TradingController::class, 'transferToTrading']);
+            Route::post('/transfer/out', [TradingController::class, 'transferFromTrading']);
         });
 
         // Machines API
