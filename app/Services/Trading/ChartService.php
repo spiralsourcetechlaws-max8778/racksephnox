@@ -23,9 +23,6 @@ class ChartService
         '1d'  => 86400,
     ];
 
-    /**
-     * Return candles for a pair+interval. Tries cache → DB → aggregation → Binance → synthetic.
-     */
     public function getCandles(int $pairId, string $interval = '1h', int $limit = 500): Collection
     {
         if (!isset($this->intervalSeconds[$interval])) {
@@ -38,26 +35,22 @@ class ChartService
             $pair = TradingPair::find($pairId);
             if (!$pair) return collect();
 
-            // 1. Try DB (fresh enough?)
             $candles = $this->freshCandles($pairId, $interval, $limit);
             if ($candles->count() >= 10) {
                 return $this->fillGaps($candles, $interval);
             }
 
-            // 2. Try Binance API
             $this->syncHistoricalData($pair, $interval, $limit);
             $candles = $this->freshCandles($pairId, $interval, $limit);
             if ($candles->count() >= 10) {
                 return $this->fillGaps($candles, $interval);
             }
 
-            // 3. Try aggregation from a smaller interval
             $aggregated = $this->aggregateFromSmaller($pairId, $interval, $limit);
             if ($aggregated->count() >= 10) {
                 return $aggregated;
             }
 
-            // 4. Synthetic fallback
             $this->seedSyntheticCandles($pairId, $interval, $limit);
             $candles = $this->freshCandles($pairId, $interval, $limit);
 
@@ -87,10 +80,6 @@ class ChartService
             ->values();
     }
 
-    /**
-     * Fill gaps between consecutive candles with flat synthetic candles
-     * (using previous close as O/H/L/C with 0 volume). Result: continuous chart.
-     */
     protected function fillGaps(Collection $candles, string $interval): Collection
     {
         if ($candles->isEmpty()) return $candles;
@@ -108,7 +97,6 @@ class ChartService
                 $expected = $prevTs + $step;
                 $prevClose = $filled->last()['close'];
 
-                // Insert flat candles for each missing slot
                 while ($expected < $ts) {
                     $filled->push([
                         'time'   => $expected,
@@ -135,16 +123,12 @@ class ChartService
         return $filled;
     }
 
-    /**
-     * If a specific interval has no data, aggregate from a smaller one.
-     */
     protected function aggregateFromSmaller(int $pairId, string $targetInterval, int $limit): Collection
     {
         $order = array_flip(array_keys($this->intervalSeconds));
         $targetIdx = $order[$targetInterval] ?? null;
         if ($targetIdx === null || $targetIdx === 0) return collect();
 
-        // Pick next smaller interval that has data
         for ($i = $targetIdx - 1; $i >= 0; $i--) {
             $baseInterval = array_keys($this->intervalSeconds)[$i];
             $baseCandles = TradingCandle::where('pair_id', $pairId)
@@ -235,7 +219,11 @@ class ChartService
         }
     }
 
-    protected function seedSyntheticCandles(int $pairId, string $interval, int $limit): void
+    /**
+     * PUBLIC method — called by TradingCandleSeeder and AllIntervalsCandleSeeder.
+     * Generates synthetic random-walk candles for testing / fresh installs.
+     */
+    public function seedSyntheticCandles(int $pairId, string $interval, int $limit): void
     {
         $step = $this->intervalSeconds[$interval] ?? 3600;
         $existing = TradingCandle::where('pair_id', $pairId)
@@ -278,6 +266,8 @@ class ChartService
         foreach (array_chunk($rows, 200) as $chunk) {
             TradingCandle::insert($chunk);
         }
+
+        $this->invalidateCache($pairId, $interval);
 
         Log::info('ChartService: synthetic candles seeded', ['pair_id' => $pairId, 'interval' => $interval, 'count' => $limit]);
     }
