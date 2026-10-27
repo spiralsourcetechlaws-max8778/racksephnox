@@ -2,10 +2,13 @@
 
 namespace Database\Seeders;
 
+use Database\Seeders\Concerns\RecordsSeedRuns;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
+    use RecordsSeedRuns;
+
     /**
      * Reference seeders, FK-safe order. Every seeder must be idempotent
      * (updateOrCreate / firstOrCreate). Re-running produces identical state.
@@ -16,11 +19,15 @@ class DatabaseSeeder extends Seeder
      * Destructive seeders (TradingSeeder, MachinesSeeder, BtcPriceSeeder,
      * CandleSeeder, LotteryPayoutSeeder) are INTENTIONALLY EXCLUDED. They
      * wipe or duplicate user data. Run once manually on a fresh DB only.
+     *
+     * Every run is logged to `seed_runs` (via RecordsSeedRuns) with
+     * duration, status and error — so a production deploy has a
+     * queryable audit trail independent of log scroll.
      */
     public function run(): void
     {
         $seeders = [
-            // Lottery reference data
+            // Lottery reference data — Family A symbols (matches frontend JS map)
             LotterySymbolSeeder::class,
             LotteryGameSeeder::class,
             LotteryAchievementSeeder::class,
@@ -36,20 +43,34 @@ class DatabaseSeeder extends Seeder
             LoanProductSeeder::class,
             LoanProductSeriesSeeder::class,
 
-            // Trading candles — non-destructive, bootstraps only if empty
+            // Trading candles — non-destructive, bootstraps only if empty.
+            // Self-creates the BTCUSDT trading pair via firstOrCreate().
             AllIntervalsCandleSeeder::class,
 
             // Admin user — env-guarded, skips in production if no password
             AdminUserSeeder::class,
         ];
 
+        // Essie admin — only runs when ESSIE_ADMIN_PASSWORD is present.
+        // Seeder is itself idempotent (existence check + env guard), so
+        // including it unconditionally would also work — but we gate it
+        // here so seed_runs reflects "actually attempted" vs "not set".
+        if (env('ESSIE_ADMIN_PASSWORD')) {
+            $seeders[] = EssieAdminSeeder::class;
+        }
+
         $failed = [];
 
         foreach ($seeders as $seeder) {
+            $start = microtime(true);
             try {
                 $this->call($seeder);
-                $this->command->info("✅ {$seeder}");
+                $ms = (int) round((microtime(true) - $start) * 1000);
+                $this->recordSeedRun($seeder, 'ok', null, $ms);
+                $this->command->info("✅ {$seeder} ({$ms}ms)");
             } catch (\Throwable $e) {
+                $ms = (int) round((microtime(true) - $start) * 1000);
+                $this->recordSeedRun($seeder, 'failed', null, $ms, $e->getMessage());
                 report($e);
                 $failed[] = $seeder;
                 $this->command->warn(
