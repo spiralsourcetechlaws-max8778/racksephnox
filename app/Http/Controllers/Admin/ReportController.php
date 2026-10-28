@@ -95,4 +95,29 @@ class ReportController extends Controller
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ]);
     }
+
+    /**
+     * Dispatcher for all export types — driven by POST /admin/reports/export.
+     *
+     * The /admin/reports page has one "Export" button with a dropdown
+     * selecting `type` (users / transactions / investments / trading / pdf).
+     * This method routes to the correct exporter based on that value.
+     *
+     * Falls back to `users` if type is missing, so the exporter still
+     * works if the form hasn't been updated to include the dropdown.
+     */
+    public function export(\Illuminate\Http\Request $request)
+    {
+        $type = (string) $request->input('type', 'users');
+
+        return match ($type) {
+            'users'        => $this->exportUsers(),
+            'transactions' => $this->exportTransactions(),
+            'investments'  => $this->exportInvestments(),
+            'trading'      => $this->exportTrading(),
+            'pdf'          => $this->exportPdfReport(),
+            default        => back()->withErrors(['error' => "Unknown export type: {$type}"]),
+        };
+    }
+
 }

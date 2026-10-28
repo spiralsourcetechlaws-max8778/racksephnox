@@ -313,4 +313,80 @@ class LotteryController extends Controller
 
         return back()->with('success', "Imported {$imported} symbols.");
     }
+
+    /**
+     * Bulk-save lottery symbols from the /admin/lottery/symbols form.
+     *
+     * The view posts `symbols` as an array keyed by symbol ID:
+     *   symbols[<id>][name], symbols[<id>][display_name], ...
+     *
+     * Only updates columns that actually exist on the lottery_symbols
+     * table — defensive against schema drift (same class of bug we've
+     * hit before with trading_candles, trade_orders, trading_accounts).
+     *
+     * Wrapped in DB::transaction — either all rows update or none do.
+     */
+    public function updateSymbols(Request $request)
+    {
+        $payload = $request->input('symbols', []);
+
+        if (!is_array($payload) || empty($payload)) {
+            return back()->withErrors(['error' => 'No symbols submitted.']);
+        }
+
+        $existing = \Illuminate\Support\Facades\Schema::getColumnListing('lottery_symbols');
+        $updateable = array_values(array_intersect($existing, [
+            'name', 'display_name', 'icon', 'multiplier',
+            'weight', 'is_divine', 'is_wild', 'is_scatter', 'is_active',
+        ]));
+
+        if (empty($updateable)) {
+            return back()->withErrors(['error' => 'No updateable columns found on lottery_symbols.']);
+        }
+
+        $updated = 0;
+        $errors  = [];
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $updateable, &$updated, &$errors) {
+            foreach ($payload as $id => $fields) {
+                if (!is_numeric($id) || !is_array($fields)) {
+                    continue;
+                }
+                $symbol = \App\Models\LotterySymbol::find((int) $id);
+                if (!$symbol) {
+                    $errors[] = "Symbol #{$id} not found";
+                    continue;
+                }
+
+                $data = [];
+                foreach ($updateable as $col) {
+                    if (!array_key_exists($col, $fields)) {
+                        continue;
+                    }
+                    $value = $fields[$col];
+
+                    if (in_array($col, ['is_divine', 'is_wild', 'is_scatter', 'is_active'], true)) {
+                        $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                        $value  = $parsed === null ? !empty($fields[$col]) : $parsed;
+                    } elseif (in_array($col, ['multiplier', 'weight'], true) && $value !== null && $value !== '') {
+                        $value = is_numeric($value) ? (float) $value : $value;
+                    }
+
+                    $data[$col] = $value;
+                }
+
+                if (!empty($data)) {
+                    $symbol->update($data);
+                    $updated++;
+                }
+            }
+        });
+
+        if (!empty($errors)) {
+            return back()->with('success', "Updated {$updated} symbol(s).")->withErrors($errors);
+        }
+
+        return back()->with('success', "Updated {$updated} symbol(s).");
+    }
+
 }
