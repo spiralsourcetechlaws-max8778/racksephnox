@@ -10,9 +10,15 @@
 
 @section('content')
 @php
+    // $errors is injected by ShareErrorsFromSession during HTTP requests.
+    // Outside HTTP context (tinker, queue, console) it's undefined — give
+    // it a fresh bag so the view still renders cleanly.
+    $errors = $errors ?? new \Illuminate\Support\ViewErrorBag();
+
     $me = auth()->user();
     $isSuper = $me->hasRole('super_admin');
     $isSelf  = $user->id === $me->id;
+    $initialIsAdmin = old('is_admin', $user->is_admin) ? 'true' : 'false';
 @endphp
 
 <div class="max-w-4xl mx-auto space-y-4 pb-32">
@@ -123,21 +129,25 @@
 
         @if($isSuper)
             {{-- ADMIN PRIVILEGES --}}
-            <div class="admin-card p-6 space-y-4 mt-4 border-l-4 border-l-red-500">
+            <div class="admin-card p-6 space-y-4 mt-4 border-l-4 border-l-red-500"
+                 x-data="{ isAdmin: {{ $initialIsAdmin }} }">
                 <h2 class="text-lg font-semibold text-red-400 pb-2 border-b border-gray-800">Admin Privileges</h2>
+
                 <label class="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : 'cursor-pointer hover:bg-gray-800' }}">
                     @if(!$isSelf)
                         <input type="hidden" name="is_admin" value="0">
                     @endif
-                    <input type="checkbox" name="is_admin" value="1" {{ old('is_admin', $user->is_admin) ? 'checked' : '' }} {{ $isSelf ? 'disabled' : '' }} class="w-4 h-4">
+                    <input type="checkbox" name="is_admin" value="1" x-model="isAdmin" {{ $isSelf ? 'disabled' : '' }} class="w-4 h-4">
                     <div>
                         <p class="text-sm font-medium text-white">Is Administrator</p>
                         <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked - cannot remove your own admin access' : 'Grants access to /admin panel' }}</p>
                     </div>
                 </label>
-                <div>
+
+                <div x-show="isAdmin" x-cloak>
                     <label class="block text-sm text-gray-400 mb-1">Admin Role</label>
-                    <select name="admin_role" {{ $isSelf ? 'disabled' : '' }} class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2">
+                    <select name="admin_role" :disabled="!isAdmin" {{ $isSelf ? 'disabled' : '' }}
+                            class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2">
                         <option value="super_admin" {{ old('admin_role', $user->admin_role) === 'super_admin' ? 'selected' : '' }}>Super Admin - Full access</option>
                         <option value="finance" {{ old('admin_role', $user->admin_role) === 'finance' ? 'selected' : '' }}>Finance Admin - Deposits, withdrawals, loans, reports</option>
                         <option value="support" {{ old('admin_role', $user->admin_role) === 'support' ? 'selected' : '' }}>Support Admin - User views + KYC review</option>
@@ -199,4 +209,6 @@
         </div>
     @endif
 </div>
+
+<style>[x-cloak]{display:none !important}</style>
 @endsection

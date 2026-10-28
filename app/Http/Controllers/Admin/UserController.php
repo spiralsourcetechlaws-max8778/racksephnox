@@ -186,14 +186,23 @@ class UserController extends Controller
         }
 
         // ─── Reconcile is_admin <-> admin_role ───────────────────────
-        if ($newAdminRole && $newAdminRole !== 'user') {
-            $newIsAdmin = true;   // setting a role implies admin
-        }
-        if ($newIsAdmin && (!$newAdminRole || $newAdminRole === 'user')) {
-            $newAdminRole = $user->admin_role ?? 'super_admin';   // admin with no role = super
-        }
-        if (!$newIsAdmin) {
-            $newAdminRole = null;   // not admin = no role
+        // If the caller explicitly unchecked is_admin (hidden 0 submitted),
+        // admin_role from the hidden-but-submitted <select> MUST be ignored.
+        // Otherwise a super admin editing a regular user would silently
+        // promote them to super_admin.
+        if ($request->has('is_admin') && !$request->boolean('is_admin')) {
+            $newIsAdmin   = false;
+            $newAdminRole = null;
+        } else {
+            if ($newAdminRole && $newAdminRole !== 'user') {
+                $newIsAdmin = true;
+            }
+            if ($newIsAdmin && (!$newAdminRole || $newAdminRole === 'user')) {
+                $newAdminRole = $user->admin_role ?? 'super_admin';
+            }
+            if (!$newIsAdmin) {
+                $newAdminRole = null;
+            }
         }
 
         // ─── Build the update payload ────────────────────────────────

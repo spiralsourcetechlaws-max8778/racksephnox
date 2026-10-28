@@ -72,12 +72,17 @@ class AdjustmentController extends Controller
         $machine = Machine::findOrFail($validated['machine_id']);
         $amount  = (float) $validated['amount'];
 
-        // Validate against machine min/max
-        if ($amount < $machine->min_amount) {
-            return back()->withErrors(['error' => "Amount below machine minimum (KES {$machine->min_amount})."]);
+        // Machine bounds — RX machines store vip1/vip3_start_amount, not min/max.
+        // Fall back to min_amount/max_amount for non-RX machine types.
+        $min = (float) ($machine->vip1_start_amount ?? $machine->min_amount ?? 0);
+        $max = (float) ($machine->vip3_start_amount ?? 0);
+        $max = $max > 0 ? $max * 10 : (float) ($machine->max_amount ?? 0);
+
+        if ($min > 0 && $amount < $min) {
+            return back()->withErrors(['error' => "Amount below machine minimum (KES " . number_format($min, 0) . ")."]);
         }
-        if ($machine->max_amount && $amount > $machine->max_amount) {
-            return back()->withErrors(['error' => "Amount above machine maximum (KES {$machine->max_amount})."]);
+        if ($max > 0 && $amount > $max) {
+            return back()->withErrors(['error' => "Amount above machine maximum (KES " . number_format($max, 0) . ")."]);
         }
 
         $wallet = $user->wallet;
@@ -108,7 +113,7 @@ class AdjustmentController extends Controller
             if (in_array('matures_at', $cols))       $data['matures_at']       = now()->addDays($machine->cycle_days ?? 14);
             if (in_array('returns_earned', $cols))   $data['returns_earned']   = 0;
             if (in_array('total_returns', $cols))    $data['total_returns']    = 0;
-            if (in_array('expected_return', $cols))  $data['expected_return']  = $amount * (1 + ($machine->growth_rate ?? 0));
+            if (in_array('expected_return', $cols))  $data['expected_return']  = $amount * (1 + (($machine->growth_rate ?? 0) / 100));
 
             $investment = MachineInvestment::create($data);
 
