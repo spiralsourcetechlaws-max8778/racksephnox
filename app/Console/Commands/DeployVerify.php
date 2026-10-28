@@ -18,15 +18,16 @@ use Illuminate\Support\Facades\Schema;
  *   1. seed_runs          — which seeders ran, timings, errors
  *   2. trading_candles    — per-interval counts + close_time presence
  *   3. btc_price_histories— row count, latest, currency column
- *   4. schema drift       — columns the code needs, by table
- *   5. admin users        — who has is_admin = 1, per-role
- *   6. row counts         — one number per critical table
- *   7. warnings summary   — collapsed list of anything flagged
+ *   4. settings           — columns + row count (diagnostic for admin panel)
+ *   5. schema drift       — columns the code needs, by table
+ *   6. admin users        — who has is_admin = 1, per-role
+ *   7. row counts         — one number per critical table
+ *   8. warnings summary   — collapsed list of anything flagged
  */
 class DeployVerify extends Command
 {
     protected $signature = 'deploy:verify';
-    protected $description = 'Print post-deploy audit: seed_runs, candle counts, schema drift, admins, row counts';
+    protected $description = 'Print post-deploy audit: seed_runs, candle counts, settings, schema drift, admins, row counts';
 
     private array $warnings = [];
 
@@ -41,6 +42,7 @@ class DeployVerify extends Command
         $this->checkSeedRuns();
         $this->checkCandles();
         $this->checkBtcPrices();
+        $this->checkSettings();
         $this->checkSchemaDrift();
         $this->checkAdmins();
         $this->checkRowCounts();
@@ -177,7 +179,41 @@ class DeployVerify extends Command
         }
     }
 
-    /* ─── 4. schema drift ──────────────────────────────────────── */
+    /* ─── 4. settings (admin panel dependency) ─────────────────── */
+
+    private function checkSettings(): void
+    {
+        $this->info('');
+        $this->info('── settings ──────────────────────────────────────────────────');
+
+        if (!Schema::hasTable('settings')) {
+            $this->error('   ❌  table MISSING — /admin/settings will 500');
+            $this->warnings[] = 'settings table missing — admin settings page broken';
+            return;
+        }
+
+        $columns = Schema::getColumnListing('settings');
+        $this->line('   columns : ' . implode(', ', $columns));
+
+        $expected = ['id', 'key', 'value', 'type', 'created_at', 'updated_at'];
+        $missing  = array_values(array_diff($expected, $columns));
+        if (!empty($missing)) {
+            $this->error('   ❌  missing columns: ' . implode(', ', $missing));
+            $this->warnings[] = 'settings missing columns: ' . implode(',', $missing);
+        } else {
+            $this->line('   schema  : ✅ matches expected columns');
+        }
+
+        $count = DB::table('settings')->count();
+        $this->line("   rows    : {$count}");
+        if ($count === 0) {
+            // Not a failure — settings fall back to defaults in code.
+            // But flagging so you know the table is empty on a fresh deploy.
+            $this->line('   note    : 0 rows — code will use defaults until first save');
+        }
+    }
+
+    /* ─── 5. schema drift ──────────────────────────────────────── */
 
     private function checkSchemaDrift(): void
     {
@@ -193,6 +229,7 @@ class DeployVerify extends Command
             'machines'            => ['code', 'name', 'growth_rate', 'duration_days'],
             'lottery_symbols'     => ['name', 'display_name', 'icon'],
             'users'               => ['email', 'password', 'is_admin', 'admin_role'],
+            'settings'            => ['key', 'value', 'type'],
         ];
 
         foreach ($expect as $table => $cols) {
@@ -212,7 +249,7 @@ class DeployVerify extends Command
         }
     }
 
-    /* ─── 5. admin users ───────────────────────────────────────── */
+    /* ─── 6. admin users ───────────────────────────────────────── */
 
     private function checkAdmins(): void
     {
@@ -254,7 +291,7 @@ class DeployVerify extends Command
         $this->line('   total admins: ' . $admins->count());
     }
 
-    /* ─── 6. row counts ────────────────────────────────────────── */
+    /* ─── 7. row counts ────────────────────────────────────────── */
 
     private function checkRowCounts(): void
     {
@@ -269,6 +306,7 @@ class DeployVerify extends Command
             'trading_pairs', 'trading_candles', 'btc_price_histories',
             'trade_orders', 'trading_accounts',
             'transactions',
+            'settings',
         ];
 
         foreach ($tables as $t) {
