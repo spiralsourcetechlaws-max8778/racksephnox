@@ -4,14 +4,14 @@
 <div class="space-y-6 text-center">
     <h2 class="text-2xl font-bold text-white">Welcome Back</h2>
 
-    {{-- Session status (e.g. "Your password has been reset") --}}
+    {{-- Session status flash (e.g. "password reset successful") --}}
     @if (session('status'))
         <div class="bg-green-500/20 border border-green-500/40 text-green-300 text-sm p-3 rounded-lg text-left">
             {{ session('status') }}
         </div>
     @endif
 
-    {{-- Error summary --}}
+    {{-- Validation error banner --}}
     @if ($errors->any())
         <div class="bg-red-500/20 border border-red-500/40 text-red-300 text-sm p-3 rounded-lg text-left">
             <p class="font-semibold mb-1">Sign-in failed</p>
