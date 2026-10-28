@@ -21,9 +21,14 @@ class AuthenticatedSessionController extends Controller
         $request->authenticate();
         $request->session()->regenerate();
 
-        // Redirect admin users to admin dashboard
+        // Admins always land on the dashboard, never on an intended URL.
+        // Otherwise a login attempt that started at /admin/settings (or any
+        // heavy admin page) replays that URL and traps the admin there.
+        // Non-admin users keep the intended() flow so "go back to the page
+        // I tried to visit" still works for the customer app.
         if (Auth::user()->is_admin) {
-            return redirect()->intended(route('admin.dashboard'));
+            $request->session()->forget('url.intended');
+            return redirect()->route('admin.dashboard');
         }
 
         return redirect()->intended(route('dashboard'));
