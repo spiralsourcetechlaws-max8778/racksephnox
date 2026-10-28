@@ -60,6 +60,12 @@ else
     echo "⏭  SKIP_SEED set — skipping seeder."
 fi
 
+# ─── Warm admin dashboard cache (non-fatal) ─────────────────────
+# Renders /admin once so the first user after deploy hits a warm
+# cache instead of the 20-60s cold build on Postgres.
+echo "🔥 Warming admin dashboard cache..."
+php artisan admin:warm-cache || echo "⚠️  Cache warm failed — deploy continues."
+
 # ─── Caches ─────────────────────────────────────────────────────
 echo "⚙️  Caching configs..."
 php artisan config:cache
@@ -67,8 +73,6 @@ php artisan route:cache
 php artisan view:cache
 
 # ─── Post-deploy verification (non-fatal, informational) ────────
-# Every deploy prints an audit block: seed_runs, candle counts,
-# schema drift, row counts. Read-only. Safe to fail.
 echo ""
 echo "🔎 Post-deploy verification..."
 if php artisan deploy:verify; then

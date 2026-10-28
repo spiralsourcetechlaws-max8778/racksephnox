@@ -20,7 +20,40 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    /** Cache key — bump the version when the view structure changes. */
+    private const CACHE_KEY = 'admin.dashboard.html.v2';
+
+    /** Seconds the rendered HTML stays cached. 3 minutes = fast admin UX, tolerable staleness. */
+    private const CACHE_TTL = 180;
+
+    /**
+     * Main dashboard — served from cache when possible.
+     *
+     * Why this is cached as HTML:
+     *   The controller fires ~30 aggregate queries and the view renders
+     *   28KB of HTML with chart data. On Render's Postgres that's
+     *   20-60s per cold request — enough to hit the nginx timeout
+     *   and hang the browser. Caching the fully rendered string means
+     *   only the very first request after a deploy pays that cost.
+     */
     public function index()
+    {
+        $html = Cache::get(self::CACHE_KEY);
+
+        if ($html === null) {
+            $html = $this->buildDashboardHtml();
+            Cache::put(self::CACHE_KEY, $html, self::CACHE_TTL);
+        }
+
+        return response($html);
+    }
+
+    /**
+     * Build the rendered HTML. Called from:
+     *   - index() when the cache is cold
+     *   - warmCache() from the deploy entrypoint
+     */
+    protected function buildDashboardHtml(): string
     {
         /* ============================================================
          |  CORE STATS
@@ -120,7 +153,6 @@ class DashboardController extends Controller
          ============================================================ */
         $recentActivities = collect();
 
-        // Recent deposits
         DepositRequest::with('user')->latest()->take(5)->get()->each(function ($d) use ($recentActivities) {
             $recentActivities->push([
                 'created_at' => $d->created_at,
@@ -132,7 +164,6 @@ class DashboardController extends Controller
             ]);
         });
 
-        // Recent withdrawals
         WithdrawalRequest::with('user')->latest()->take(5)->get()->each(function ($w) use ($recentActivities) {
             $recentActivities->push([
                 'created_at' => $w->created_at,
@@ -144,7 +175,6 @@ class DashboardController extends Controller
             ]);
         });
 
-        // Recent lottery spins
         LotterySpin::with('user')->latest()->take(5)->get()->each(function ($s) use ($recentActivities) {
             $recentActivities->push([
                 'created_at' => $s->created_at,
@@ -157,7 +187,6 @@ class DashboardController extends Controller
             ]);
         });
 
-        // Recent loans
         Loan::with('user')->latest()->take(5)->get()->each(function ($l) use ($recentActivities) {
             $recentActivities->push([
                 'created_at' => $l->created_at,
@@ -172,7 +201,7 @@ class DashboardController extends Controller
         $recentActivities = $recentActivities->sortByDesc('created_at')->take(15)->values()->toArray();
 
         /* ============================================================
-         |  REVENUE TARGET (dummy/cached)
+         |  REVENUE TARGET
          ============================================================ */
         $revenueTarget = (object) [
             'current_revenue' => (float) Transaction::where('type', 'deposit')->sum('amount'),
@@ -193,7 +222,7 @@ class DashboardController extends Controller
         $recentLoans       = Loan::with(['user', 'product'])->latest()->take(8)->get();
 
         /* ============================================================
-         |  RENDER
+         |  RENDER — as string so Cache::put works cleanly
          ============================================================ */
         return view('admin.dashboard', compact(
             'stats',
@@ -210,27 +239,58 @@ class DashboardController extends Controller
             'daysLeft',
             'remaining',
             'targetProgress'
-        ));
+        ))->render();
     }
 
-    /* ---------- Live stats JSON ---------- */
+    /**
+     * Live stats JSON — already cached, keep as-is.
+     */
     public function stats()
     {
         $stats = Cache::remember('admin_dashboard_stats', 60, function () {
             return [
-                'total_users'         => User::count(),
-                'new_users_today'     => User::whereDate('created_at', today())->count(),
-                'active_investments'  => MachineInvestment::where('status', 'active')->count(),
-                'total_pnl'           => (float) Transaction::where('type', 'interest')->sum('amount'),
-                'daily_volume'        => (float) Transaction::whereDate('created_at', today())->sum('amount'),
-                'machines_count'      => Machine::where('is_active', true)->count(),
-                'pending_loans'       => Loan::where('status', 'pending')->count(),
-                'active_loans'        => Loan::where('status', 'active')->count(),
+                'total_users'            => User::count(),
+                'new_users_today'        => User::whereDate('created_at', today())->count(),
+                'active_investments'     => MachineInvestment::where('status', 'active')->count(),
+                'total_pnl'              => (float) Transaction::where('type', 'interest')->sum('amount'),
+                'daily_volume'           => (float) Transaction::whereDate('created_at', today())->sum('amount'),
+                'machines_count'         => Machine::where('is_active', true)->count(),
+                'pending_loans'          => Loan::where('status', 'pending')->count(),
+                'active_loans'           => Loan::where('status', 'active')->count(),
                 'total_loan_outstanding' => (float) Loan::where('status', 'active')->sum('balance'),
             ];
         });
 
         return response()->json($stats);
+    }
+
+    /**
+     * POST /admin/refresh-cache — bust dashboard cache on demand.
+     * Called from a button in the dashboard header (or via curl).
+     */
+    public function refreshDashboardCache()
+    {
+        Cache::forget(self::CACHE_KEY);
+        Cache::forget('admin_dashboard_stats');
+
+        return back()->with('success', 'Dashboard cache cleared. Next load will rebuild.');
+    }
+
+    /**
+     * Called by the `admin:warm-cache` console command on deploy.
+     * Renders the dashboard once so the first real user hits a warm cache.
+     *
+     * @return array{ms: int, bytes: int}
+     */
+    public function warmCache(): array
+    {
+        $t = microtime(true);
+        $html = $this->buildDashboardHtml();
+        $ms = (int) round((microtime(true) - $t) * 1000);
+
+        Cache::put(self::CACHE_KEY, $html, self::CACHE_TTL);
+
+        return ['ms' => $ms, 'bytes' => strlen($html)];
     }
 
     /* ---------- Helper: fill missing dates with zeros ---------- */

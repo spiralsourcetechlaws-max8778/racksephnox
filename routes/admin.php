@@ -25,13 +25,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // ============ SUPER ADMIN + SUPPORT: View users & KYC ============
     Route::middleware('role:super_admin,support')->group(function () {
         Route::get('users', [UserController::class, 'index'])->name('users.index');
-
-        // whereNumber prevents /admin/users/create from being shadowed
-        // by this route when it appears earlier in the file. Without it,
-        // /admin/users/create resolves {user} = "create" → 404.
-        Route::get('users/{user}', [UserController::class, 'show'])
-            ->name('users.show')
-            ->whereNumber('user');
+        Route::get('users/{user}', [UserController::class, 'show'])->name('users.show')->whereNumber('user');
 
         Route::get('kyc', [KycController::class, 'index'])->name('kyc.index');
         Route::get('kyc/{document}', [KycController::class, 'show'])->name('kyc.show');
@@ -89,7 +83,6 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     // ============ SUPER ADMIN ONLY: Platform config ============
     Route::middleware('role:super_admin')->group(function () {
-        // except('show') — the controller has no show() method
         Route::resource('plans', InvestmentPlanController::class)->except(['show']);
         Route::post('plans/export', [InvestmentPlanController::class, 'export'])->name('plans.export');
 
@@ -115,5 +108,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('settings/maintenance', [SettingsController::class, 'toggleMaintenance'])->name('settings.maintenance');
 
         Route::get('monitoring', [MonitoringController::class, 'index'])->name('monitoring.index');
+
+        // ─── Dashboard cache bust (super_admin only) ───
+        // Fires from a "↻ Refresh" button on the dashboard header.
+        Route::post('refresh-cache', [DashboardController::class, 'refreshDashboardCache'])->name('refresh-cache');
     });
 });
