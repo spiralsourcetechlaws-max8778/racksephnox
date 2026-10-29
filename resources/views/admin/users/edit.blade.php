@@ -77,7 +77,7 @@
             </div>
         </div>
 
-        {{-- ACCOUNT STATUS --}}
+        {{-- ACCOUNT STATUS (Tailwind Toggles) --}}
         <div class="admin-card p-6 space-y-4 mt-4">
             <h2 class="text-lg font-semibold text-gold pb-2 border-b border-gray-800">Account Status</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -98,50 +98,63 @@
                     </select>
                 </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                <label class="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : 'cursor-pointer hover:bg-gray-800' }}">
-                    @if(!$isSelf)
-                        <input type="hidden" name="is_verified" value="0">
-                    @endif
-                    <input type="checkbox" name="is_verified" value="1" {{ old('is_verified', $user->is_verified) ? 'checked' : '' }} {{ $isSelf ? 'disabled' : '' }} class="w-4 h-4">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-800/50">
+                <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : '' }}">
                     <div>
                         <p class="text-sm font-medium text-white">Email Verified</p>
-                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked - cannot unverify yourself' : 'Skip verification step' }}</p>
+                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked' : 'Skip verification step' }}</p>
                     </div>
-                </label>
-                <label class="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : 'cursor-pointer hover:bg-gray-800' }}">
-                    @if(!$isSelf)
-                        <input type="hidden" name="is_active" value="0">
-                    @endif
-                    <input type="checkbox" name="is_active" value="1" {{ old('is_active', $user->is_active ?? true) ? 'checked' : '' }} {{ $isSelf ? 'disabled' : '' }} class="w-4 h-4">
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        @if(!$isSelf)
+                            <input type="hidden" name="is_verified" value="0">
+                        @endif
+                        <input type="checkbox" name="is_verified" value="1" class="sr-only peer" {{ old('is_verified', $user->is_verified) ? 'checked' : '' }} {{ $isSelf ? 'disabled' : '' }}>
+                        <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : '' }}">
                     <div>
                         <p class="text-sm font-medium text-white">Active Account</p>
-                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked - cannot deactivate yourself' : 'Unchecked = login blocked' }}</p>
+                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked' : 'Unchecked = login blocked' }}</p>
                     </div>
-                </label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        @if(!$isSelf)
+                            <input type="hidden" name="is_active" value="0">
+                        @endif
+                        <input type="checkbox" name="is_active" value="1" class="sr-only peer" {{ old('is_active', $user->is_active ?? true) ? 'checked' : '' }} {{ $isSelf ? 'disabled' : '' }}>
+                        <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                </div>
             </div>
         </div>
 
         @if($isSuper)
-            {{-- ADMIN PRIVILEGES (Alpine Toggle Guard) --}}
+            {{-- ADMIN PRIVILEGES (Alpine Toggle) --}}
             <div class="admin-card p-6 space-y-4 mt-4 border-l-4 border-l-red-500" x-data="{ isAdmin: {{ $initialIsAdmin }} }">
                 <h2 class="text-lg font-semibold text-red-400 pb-2 border-b border-gray-800">Admin Privileges</h2>
-                <label class="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : 'cursor-pointer hover:bg-gray-800' }}">
-                    @if(!$isSelf)
-                        <input type="hidden" name="is_admin" value="0">
-                    @endif
-                    <input type="checkbox" name="is_admin" value="1" x-model="isAdmin" {{ $isSelf ? 'disabled' : '' }} class="w-4 h-4">
+                
+                <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : '' }}">
                     <div>
                         <p class="text-sm font-medium text-white">Is Administrator</p>
-                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked - cannot remove your own admin access' : 'Grants access to /admin panel' }}</p>
+                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked - cannot remove own access' : 'Grants access to /admin panel' }}</p>
                     </div>
-                </label>
-                <div x-show="isAdmin" x-cloak>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        @if(!$isSelf)
+                            <input type="hidden" name="is_admin" value="0">
+                        @endif
+                        <input type="checkbox" name="is_admin" value="1" x-model="isAdmin" class="sr-only peer" {{ $isSelf ? 'disabled' : '' }}>
+                        <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-500"></div>
+                    </label>
+                </div>
+
+                <div x-show="isAdmin" x-cloak class="mt-4 pt-4 border-t border-gray-800/50">
                     <label class="block text-sm text-gray-400 mb-1">Admin Role</label>
                     <select name="admin_role" :disabled="!isAdmin" {{ $isSelf ? 'disabled' : '' }} class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2">
                         <option value="super_admin" {{ old('admin_role', $user->admin_role) === 'super_admin' ? 'selected' : '' }}>Super Admin - Full access</option>
-                        <option value="finance" {{ old('admin_role', $user->admin_role) === 'finance' ? 'selected' : '' }}>Finance Admin - Deposits, withdrawals, loans, reports</option>
-                        <option value="support" {{ old('admin_role', $user->admin_role) === 'support' ? 'selected' : '' }}>Support Admin - User views + KYC review</option>
+                        <option value="finance" {{ old('admin_role', $user->admin_role) === 'finance' ? 'selected' : '' }}>Finance Admin - Money movement</option>
+                        <option value="support" {{ old('admin_role', $user->admin_role) === 'support' ? 'selected' : '' }}>Support Admin - Users & KYC</option>
                     </select>
                     @if($isSelf)
                         <p class="text-xs text-yellow-400 mt-1">Your role is locked to prevent self-lockout</p>
@@ -149,45 +162,56 @@
                 </div>
             </div>
 
-            {{-- USER PRIVILEGES --}}
+            {{-- USER PRIVILEGES (Tailwind Toggles) --}}
             <div class="admin-card p-6 space-y-4 mt-4 border-l-4 border-l-yellow-500">
                 <h2 class="text-lg font-semibold text-yellow-400 pb-2 border-b border-gray-800">User Privileges</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <label class="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded cursor-pointer hover:bg-gray-800">
-                        <input type="hidden" name="is_vip" value="0">
-                        <input type="checkbox" name="is_vip" value="1" {{ old('is_vip', $user->is_vip) ? 'checked' : '' }} class="w-4 h-4">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded">
                         <div>
                             <p class="text-sm font-medium text-white">VIP Member</p>
-                            <p class="text-xs text-gray-400">Access to premium tiers</p>
+                            <p class="text-xs text-gray-400">Premium tiers & bonuses</p>
                         </div>
-                    </label>
-                    <label class="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded cursor-pointer hover:bg-gray-800">
-                        <input type="hidden" name="has_promo" value="0">
-                        <input type="checkbox" name="has_promo" value="1" {{ old('has_promo', $user->has_promo) ? 'checked' : '' }} class="w-4 h-4">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="hidden" name="is_vip" value="0">
+                            <input type="checkbox" name="is_vip" value="1" class="sr-only peer" {{ old('is_vip', $user->is_vip) ? 'checked' : '' }}>
+                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                        </label>
+                    </div>
+
+                    <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded">
                         <div>
                             <p class="text-sm font-medium text-white">Promo Active</p>
                             <p class="text-xs text-gray-400">
                                 @if($user->has_promo && $user->promo_expires_at)
                                     Expires {{ $user->promo_expires_at->format('M d, Y') }}
                                 @else
-                                    Enabling sets 7-day expiry
+                                    7-day expiry
                                 @endif
                             </p>
                         </div>
-                    </label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="hidden" name="has_promo" value="0">
+                            <input type="checkbox" name="has_promo" value="1" class="sr-only peer" {{ old('has_promo', $user->has_promo) ? 'checked' : '' }}>
+                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                        </label>
+                    </div>
                 </div>
             </div>
         @endif
 
-        {{-- FIXED SAVE BAR --}}
+        {{-- FIXED STICKY SAVE BAR --}}
         <div class="fixed bottom-0 left-0 right-0 z-40 bg-gray-950 border-t-2 border-gold shadow-2xl p-4">
             <div class="max-w-4xl mx-auto flex justify-between items-center gap-3">
                 <a href="{{ route('admin.users.show', $user) }}" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded">Cancel</a>
-                <button type="submit" form="edit-user-form" class="px-8 py-3 bg-gold hover:bg-yellow-500 text-black font-bold rounded text-base shadow-lg">Save All Changes</button>
+                <button type="submit" form="edit-user-form" class="px-8 py-3 bg-gold hover:bg-yellow-500 text-black font-bold rounded text-base shadow-lg transition">
+                    <i class="fas fa-save mr-1"></i> Save All Changes
+                </button>
             </div>
         </div>
     </form>
 
+    {{-- DANGER ZONE --}}
     @if($isSuper && !$isSelf)
         <div class="admin-card p-6 border-t-4 border-t-red-600 mt-4">
             <h3 class="text-lg font-semibold text-red-400 mb-2">Danger Zone</h3>
@@ -195,7 +219,9 @@
             <form method="POST" action="{{ route('admin.users.destroy', $user) }}" onsubmit="return confirm('Permanently delete {{ addslashes($user->name) }}? This cannot be undone.');">
                 @csrf
                 @method('DELETE')
-                <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded">Delete User Permanently</button>
+                <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded">
+                    <i class="fas fa-trash mr-1"></i> Delete User Permanently
+                </button>
             </form>
         </div>
     @endif
