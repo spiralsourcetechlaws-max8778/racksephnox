@@ -74,7 +74,6 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::middleware('role:super_admin')->group(function () {
         Route::resource('plans', InvestmentPlanController::class);
         Route::post('plans/export', [InvestmentPlanController::class, 'export'])->name('plans.export');
-
         Route::prefix('lottery')->name('lottery.')->group(function () {
             Route::get('/', [LotteryController::class, 'index'])->name('index');
             Route::get('/analytics', [LotteryAnalyticsController::class, 'index'])->name('analytics');
@@ -91,12 +90,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
             Route::get('/{lottery}/edit', [LotteryController::class, 'edit'])->name('edit');
             Route::put('/{lottery}', [LotteryController::class, 'update'])->name('update');
         });
-
         Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::post('settings', [SettingsController::class, 'update'])->name('settings.update');
         Route::post('settings/cache-clear', [SettingsController::class, 'clearCache'])->name('settings.cache-clear');
         Route::post('settings/maintenance', [SettingsController::class, 'toggleMaintenance'])->name('settings.maintenance');
-
         Route::get('monitoring', [MonitoringController::class, 'index'])->name('monitoring.index');
         Route::post('refresh-cache', [DashboardController::class, 'refreshDashboardCache'])->name('refresh-cache');
     });

@@ -20,15 +20,20 @@ use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
-    private const CACHE_KEY = 'admin.dashboard.html.v3';
+    private const CACHE_KEY = 'admin.dashboard.html.v4';
     private const CACHE_TTL = 180;
 
     public function index()
     {
         $html = Cache::get(self::CACHE_KEY);
         if ($html === null) {
-            $html = $this->buildDashboardHtml();
-            Cache::put(self::CACHE_KEY, $html, self::CACHE_TTL);
+            try {
+                $html = $this->buildDashboardHtml();
+                Cache::put(self::CACHE_KEY, $html, self::CACHE_TTL);
+            } catch (\Throwable $e) {
+                \Log::error('Dashboard build failed: ' . $e->getMessage());
+                return response('<div style="padding: 20px; color: red;">Dashboard failed to load. Check logs.</div>');
+            }
         }
         return response($html);
     }
@@ -67,13 +72,11 @@ class DashboardController extends Controller
             'overdue_amount'         => (float) LoanRepayment::where('status', 'pending')->where('due_date', '<', now())->sum('amount'),
         ];
 
-        // User growth — PHP grouping for cross-DB
         $userGrowth = collect(range(29, 0))
             ->mapWithKeys(fn($i) => [
                 now()->subDays($i)->format('Y-m-d') => User::whereDate('created_at', now()->subDays($i))->count()
             ])->toArray();
 
-        // Revenue trend
         $revenueTrend = ['labels' => [], 'data' => []];
         foreach (range(29, 0) as $i) {
             $date = now()->subDays($i);
@@ -82,7 +85,6 @@ class DashboardController extends Controller
                 ->whereDate('created_at', $date)->sum('amount');
         }
 
-        // Lottery activity
         $lotteryActivity = ['labels' => [], 'spins' => [], 'bets' => []];
         foreach (range(29, 0) as $i) {
             $date = now()->subDays($i);
@@ -91,7 +93,6 @@ class DashboardController extends Controller
             $lotteryActivity['bets'][]  = (float) LotterySpin::whereDate('created_at', $date)->sum('bet_amount');
         }
 
-        // Recent activities
         $recentActivities = collect();
         DepositRequest::with('user')->latest()->take(5)->get()->each(function ($d) use ($recentActivities) {
             $recentActivities->push(['created_at' => $d->created_at, 'user' => $d->user?->name ?? 'Unknown', 'type' => 'deposit', 'amount' => $d->amount, 'status' => $d->status]);

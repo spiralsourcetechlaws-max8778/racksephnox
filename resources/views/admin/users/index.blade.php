@@ -42,7 +42,7 @@
                 <option value="super_admin" {{ request('role') === 'super_admin' ? 'selected' : '' }}>Super Admin</option>
                 <option value="finance" {{ request('role') === 'finance' ? 'selected' : '' }}>Finance Admin</option>
                 <option value="support" {{ request('role') === 'support' ? 'selected' : '' }}>Support Admin</option>
-                <option value="user" {{ request('role') === 'user' ? 'selected' : '' }}>Regular Users</option>
+                <option value="user" {{ request()->role === 'user' ? 'selected' : '' }}>Regular Users</option>
             </select>
             <div class="flex gap-2">
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded py-2 text-sm font-medium">Apply</button>

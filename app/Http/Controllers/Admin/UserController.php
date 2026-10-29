@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
@@ -44,43 +46,60 @@ class UserController extends Controller
             'kyc_status' => 'nullable|in:pending,verified,rejected',
         ]);
 
-        $validated['password'] = Hash::make($validated['password']);
-        $validated['is_verified'] = $request->boolean('is_verified');
-        $validated['kyc_status'] = $validated['kyc_status'] ?? 'pending';
-        $validated['is_admin'] = !empty($validated['admin_role']);
-        $validated['email_verified_at'] = $validated['is_verified'] ? now() : null;
+        try {
+            $validated['password'] = Hash::make($validated['password']);
+            $validated['is_verified'] = $request->boolean('is_verified');
+            $validated['kyc_status'] = $validated['kyc_status'] ?? 'pending';
+            $validated['is_admin'] = !empty($validated['admin_role']);
+            $validated['email_verified_at'] = $validated['is_verified'] ? now() : null;
 
-        $user = User::create($validated);
+            $user = User::create($validated);
 
-        $initialBalance = (float) $request->input('initial_balance', 0);
-        if ($initialBalance > 0 && $user->wallet) {
-            $user->wallet->credit($initialBalance, 'Initial balance set by ' . auth()->user()->email);
+            $initialBalance = (float) $request->input('initial_balance', 0);
+            if ($initialBalance > 0 && $user->wallet) {
+                $user->wallet->credit($initialBalance, 'Initial balance set by ' . auth()->user()->email);
+            }
+
+            return redirect()->route('admin.users.show', $user)->with('success', "User created: {$user->email}");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => 'Failed to create user: ' . $e->getMessage()])->withInput();
         }
-
-        return redirect()->route('admin.users.show', $user)->with('success', "User created: {$user->email}");
     }
 
     public function show(User $user)
     {
-        $user->load([
-            'wallet', 'machineInvestments.machine', 'tradingAccount', 'transactions' => fn($q) => $q->latest()->limit(10),
-            'depositRequests' => fn($q) => $q->latest()->limit(5), 'withdrawalRequests' => fn($q) => $q->latest()->limit(5),
-            'loans', 'lotterySpins', 'referrals', 'loanCreditScore',
-        ]);
+        // Dynamically load only relations whose tables actually exist.
+        $relations = ['wallet'];
+        
+        if (Schema::hasTable('machine_investments')) $relations[] = 'machineInvestments.machine';
+        if (Schema::hasTable('trading_accounts')) $relations[] = 'tradingAccount';
+        if (Schema::hasTable('transactions')) $relations['transactions'] = fn($q) => $q->latest()->limit(10);
+        if (Schema::hasTable('deposit_requests')) $relations['depositRequests'] = fn($q) => $q->latest()->limit(5);
+        if (Schema::hasTable('withdrawal_requests')) $relations['withdrawalRequests'] = fn($q) => $q->latest()->limit(5);
+        if (Schema::hasTable('loans')) $relations[] = 'loans';
+        if (Schema::hasTable('lottery_spins')) $relations[] = 'lotterySpins';
+        if (Schema::hasTable('loan_credit_scores')) $relations[] = 'loanCreditScore';
 
+        try {
+            $user->load($relations);
+        } catch (\Throwable $e) {
+            \Log::warning('User show relation load failed: ' . $e->getMessage());
+        }
+
+        // Safe defaults for all stats
         $stats = [
             'wallet_balance' => (float) ($user->wallet?->balance ?? 0),
-            'total_deposited' => (float) $user->depositRequests->whereIn('status', ['approved', 'completed'])->sum('amount'),
-            'total_withdrawn' => (float) $user->withdrawalRequests->whereIn('status', ['completed', 'approved'])->sum('amount'),
-            'total_invested' => (float) $user->machineInvestments->sum('amount'),
-            'active_machines' => $user->machineInvestments->where('status', 'active')->count(),
-            'transaction_count' => $user->transactions->count(),
+            'total_deposited' => (float) ($user->depositRequests ?? collect())->whereIn('status', ['approved', 'completed'])->sum('amount'),
+            'total_withdrawn' => (float) ($user->withdrawalRequests ?? collect())->whereIn('status', ['completed', 'approved'])->sum('amount'),
+            'total_invested' => (float) ($user->machineInvestments ?? collect())->sum('amount'),
+            'active_machines' => ($user->machineInvestments ?? collect())->where('status', 'active')->count(),
+            'transaction_count' => ($user->transactions ?? collect())->count(),
             'trading_balance' => (float) ($user->tradingAccount?->balance ?? 0),
             'trading_pnl' => (float) ($user->tradingAccount?->total_pnl ?? 0),
-            'active_loans' => $user->loans->where('status', 'active')->count(),
-            'total_loans_principal' => (float) $user->loans->sum('principal'),
-            'total_lottery_bets' => (float) $user->lotterySpins->sum('bet_amount'),
-            'total_lottery_wins' => (float) $user->lotterySpins->sum('win_amount'),
+            'active_loans' => ($user->loans ?? collect())->where('status', 'active')->count(),
+            'total_loans_principal' => (float) ($user->loans ?? collect())->sum('principal'),
+            'total_lottery_bets' => (float) ($user->lotterySpins ?? collect())->sum('bet_amount'),
+            'total_lottery_wins' => (float) ($user->lotterySpins ?? collect())->sum('win_amount'),
             'credit_score' => $user->loanCreditScore?->score ?? null,
         ];
 
@@ -134,42 +153,67 @@ class UserController extends Controller
             'is_vip' => $request->has('is_vip') ? $request->boolean('is_vip') : $user->is_vip,
             'has_promo' => $request->has('has_promo') ? $request->boolean('has_promo') : $user->has_promo,
         ];
+        
         if (!empty($validated['password'])) $data['password'] = Hash::make($validated['password']);
         if ($data['is_verified'] && !$user->email_verified_at) $data['email_verified_at'] = now();
         if (!$data['is_verified']) $data['email_verified_at'] = null;
 
-        $user->update($data);
-        return redirect()->route('admin.users.show', $user)->with('success', 'Changes saved.');
+        try {
+            $user->update($data);
+            return redirect()->route('admin.users.show', $user)->with('success', 'Changes saved.');
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => 'Failed to update user: ' . $e->getMessage()])->withInput();
+        }
     }
 
     public function destroy(User $user)
     {
         if ($user->id === auth()->id()) return back()->withErrors(['error' => 'Cannot delete yourself.']);
-        $email = $user->email;
-        $user->delete();
-        return redirect()->route('admin.users.index')->with('success', "User {$email} deleted.");
-    }
-
-    public function toggleAdmin(User $user)
-    {
-        if ($user->id === auth()->id() && $user->is_admin) return back()->withErrors(['error' => 'Cannot demote yourself.']);
-        $user->is_admin = !$user->is_admin;
-        $user->admin_role = $user->is_admin ? ($user->admin_role ?? 'super_admin') : null;
-        $user->save();
-        return back()->with('success', "Role updated.");
+        
+        DB::beginTransaction();
+        try {
+            // Optional: Manually delete relationships if cascade isn't set up in DB
+            // but for safety, we just wrap in a try-catch.
+            $email = $user->email;
+            $user->delete();
+            DB::commit();
+            return redirect()->route('admin.users.index')->with('success', "User {$email} deleted.");
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Log::error('User delete failed: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Cannot delete user. They may have active financial records (wallets, loans, transactions). You should deactivate them instead.']);
+        }
     }
 
     public function changeRole(Request $request, User $user)
     {
         if ($user->id === auth()->id()) return back()->withErrors(['error' => 'Cannot change own role.']);
         $validated = $request->validate(['role' => 'required|in:user,super_admin,finance,support']);
-        $user->is_admin = $validated['role'] !== 'user';
-        $user->admin_role = $user->is_admin ? $validated['role'] : null;
-        $user->save();
-        return back()->with('success', "Role updated.");
+        
+        try {
+            $user->is_admin = $validated['role'] !== 'user';
+            $user->admin_role = $user->is_admin ? $validated['role'] : null;
+            $user->save();
+            return back()->with('success', "Role updated.");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => 'Failed to update role: ' . $e->getMessage()]);
+        }
     }
 
-    public function toggleVip(User $user) { $user->update(['is_vip' => !$user->is_vip]); return back()->with('success', 'VIP toggled.'); }
-    public function togglePromo(User $user) { $user->update(['has_promo' => !$user->has_promo, 'promo_expires_at' => !$user->has_promo ? now()->addDays(7) : null]); return back()->with('success', 'Promo toggled.'); }
+    public function toggleAdmin(User $user)
+    {
+        if ($user->id === auth()->id() && $user->is_admin) return back()->withErrors(['error' => 'Cannot demote yourself.']);
+        try {
+            $user->is_admin = !$user->is_admin;
+            $user->admin_role = $user->is_admin ? ($user->admin_role ?? 'super_admin') : null;
+            $user->save();
+            return back()->with('success', "Role updated.");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => 'Failed to toggle admin: ' . $e->getMessage()]);
+        }
+    }
+
+    public function toggleVip(User $user) { try { $user->update(['is_vip' => !$user->is_vip]); return back()->with('success', 'VIP toggled.'); } catch (\Throwable $e) { return back()->withErrors(['error' => $e->getMessage()]); } }
+    public function togglePromo(User $user) { try { $user->update(['has_promo' => !$user->has_promo, 'promo_expires_at' => !$user->has_promo ? now()->addDays(7) : null]); return back()->with('success', 'Promo toggled.'); } catch (\Throwable $e) { return back()->withErrors(['error' => $e->getMessage()]); } }
     public function export() { return back(); }
 }

@@ -45,12 +45,11 @@ fi
 echo "🔥 Warming admin dashboard cache..."
 php artisan admin:warm-cache || echo "⚠️  Cache warm failed — deploy continues."
 
-# ─── Critical Caching Step ───────────────────────────────────────
-echo "⚙️  Clearing old caches and rebuilding..."
+# ─── CRITICAL: Clear old caches, then rebuild ────────────────────
+echo "⚙️  Clearing stale caches..."
 php artisan optimize:clear
-php artisan route:clear
-php artisan view:clear
 
+echo "⚙️  Caching fresh configs..."
 php artisan route:cache
 php artisan config:cache
 php artisan view:cache
