@@ -1,98 +1,100 @@
 @extends('admin.layouts.app')
+
+@section('page-title', 'Settings')
 @section('content')
-<div class="flex justify-between items-center mb-6">
-    <h2 class="text-2xl font-bold text-white">Global Platform Settings</h2>
-</div>
 
-@if(session('success'))
-    <div class="bg-green-500/20 text-green-400 p-3 rounded mb-4">{{ session('success') }}</div>
-@endif
+<div class="space-y-6">
 
-@if(session('maintenance_bypass'))
-    <div class="bg-amber-500/20 border border-amber-500/50 text-amber-200 p-4 rounded mb-4">
-        <p class="font-bold mb-1">⚠️ Save this maintenance bypass URL</p>
-        <p class="text-sm font-mono break-all">{{ session('maintenance_bypass') }}</p>
-        <p class="text-xs text-amber-300/80 mt-2">Without it, only a shell can restore the site. Render free tier has no shell.</p>
+    {{-- ═══ SYSTEM STATS ═══ --}}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 class="text-sm font-semibold text-gold mb-3 pb-2 border-b border-gray-800">System Information</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div><p class="text-gray-400">PHP</p><p class="text-white font-mono">{{ $stats['php_version'] }}</p></div>
+            <div><p class="text-gray-400">Laravel</p><p class="text-white font-mono">{{ $stats['laravel_version'] }}</p></div>
+            <div><p class="text-gray-400">Environment</p><p class="text-white font-mono">{{ $stats['app_env'] }}</p></div>
+            <div><p class="text-gray-400">Debug</p><p class="text-{{ $stats['debug_mode'] === 'ON' ? 'yellow' : 'green' }}-400 font-mono">{{ $stats['debug_mode'] }}</p></div>
+            <div><p class="text-gray-400">Cache</p><p class="text-white font-mono">{{ $stats['cache_driver'] }}</p></div>
+            <div><p class="text-gray-400">Queue</p><p class="text-white font-mono">{{ $stats['queue_driver'] }}</p></div>
+            <div><p class="text-gray-400">Database</p><p class="text-white font-mono">{{ $stats['db_driver'] }}</p></div>
+        </div>
     </div>
-@endif
 
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    {{-- ═══ GENERAL SETTINGS ═══ --}}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-gold mb-4 pb-2 border-b border-gray-800">General Configuration</h2>
 
-    <!-- General Settings -->
-    <div class="md:col-span-2 bg-gray-900 border border-gray-800 p-6 rounded-lg shadow">
-        <h3 class="text-lg font-semibold text-gold mb-4 border-b border-gray-800 pb-2">General Configuration</h3>
-
-        <form method="POST" action="{{ route('admin.settings.update') }}">
+        <form method="POST" action="{{ route('admin.settings.update') }}" class="space-y-4">
             @csrf
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-1">Site Name</label>
-                    <input type="text" name="site_name" value="{{ $settings['site_name'] ?? 'Racksephnox' }}" class="w-full border border-gray-700 bg-gray-800 text-white rounded px-3 py-2" required>
+                    <label class="block text-sm text-gray-400 mb-1">Site Name</label>
+                    <input type="text" name="site_name" value="{{ $settings['site_name'] ?? 'Racksephnox' }}" class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2" required>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-1">Support Email</label>
-                    <input type="email" name="support_email" value="{{ $settings['support_email'] ?? '' }}" class="w-full border border-gray-700 bg-gray-800 text-white rounded px-3 py-2" required>
-                </div>
-            </div>
-
-            <h3 class="text-lg font-semibold text-gold mt-8 mb-4 border-b border-gray-800 pb-2">Financial Limits & Fees</h3>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-1">Deposit Fee (%)</label>
-                    <input type="number" step="0.01" name="deposit_fee_percent" value="{{ $settings['deposit_fee_percent'] ?? '0' }}" class="w-full border border-gray-700 bg-gray-800 text-white rounded px-3 py-2" required>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-1">Withdrawal Fee (%)</label>
-                    <input type="number" step="0.01" name="withdrawal_fee_percent" value="{{ $settings['withdrawal_fee_percent'] ?? '0' }}" class="w-full border border-gray-700 bg-gray-800 text-white rounded px-3 py-2" required>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-1">Min Withdrawal (KES)</label>
-                    <input type="number" step="1" name="min_withdrawal" value="{{ $settings['min_withdrawal'] ?? '100' }}" class="w-full border border-gray-700 bg-gray-800 text-white rounded px-3 py-2" required>
+                    <label class="block text-sm text-gray-400 mb-1">Support Email</label>
+                    <input type="email" name="support_email" value="{{ $settings['support_email'] ?? '' }}" class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2" required>
                 </div>
             </div>
 
-            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded transition">
-                Save Settings
-            </button>
+            <h3 class="text-sm font-semibold text-gold mt-6 mb-3 pb-2 border-b border-gray-800">Financial Limits & Fees</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Deposit Fee (%)</label>
+                    <input type="number" step="0.01" name="deposit_fee_percent" value="{{ $settings['deposit_fee_percent'] ?? '0' }}" class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2" required>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Withdrawal Fee (%)</label>
+                    <input type="number" step="0.01" name="withdrawal_fee_percent" value="{{ $settings['withdrawal_fee_percent'] ?? '0' }}" class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2" required>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Min Withdrawal (KES)</label>
+                    <input type="number" step="1" name="min_withdrawal" value="{{ $settings['min_withdrawal'] ?? '100' }}" class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2" required>
+                </div>
+            </div>
+
+            <div class="pt-4 border-t border-gray-800">
+                <button type="submit" class="bg-gold hover:bg-yellow-500 text-black font-bold px-6 py-2 rounded">Save Settings</button>
+            </div>
         </form>
     </div>
 
-    <!-- System Actions -->
-    <div class="bg-gray-900 border border-gray-800 p-6 rounded-lg shadow h-fit">
-        <h3 class="text-lg font-semibold text-gold mb-4 border-b border-gray-800 pb-2">System Actions</h3>
+    {{-- ═══ SYSTEM ACTIONS ═══ --}}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-gold mb-4 pb-2 border-b border-gray-800">System Actions</h2>
 
-        <div class="mb-6">
-            <p class="text-sm text-gray-400 mb-2">Clear config, route, and view caches. Use after UI changes. Application cache is preserved (admin dashboard stays warm).</p>
-            <form method="POST" action="{{ route('admin.settings.cache-clear') }}"
-                  onsubmit="return confirm('Clear config, route, and view caches? Safe — the dashboard and stats caches are preserved.');">
-                @csrf
-                <button type="submit" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition">
-                    🧹 Clear Application Cache
-                </button>
-            </form>
-        </div>
+        <div class="space-y-4">
+            <div class="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                <div>
+                    <p class="text-sm text-white font-medium">Clear Config, Route & View Caches</p>
+                    <p class="text-xs text-gray-400">Application cache preserved (dashboard stays warm)</p>
+                </div>
+                <form method="POST" action="{{ route('admin.settings.cache-clear') }}" onsubmit="return confirm('Clear config, route, and view caches?');">
+                    @csrf
+                    <button type="submit" class="bg-gray-700 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded text-sm">Clear</button>
+                </form>
+            </div>
 
-        <div class="border-t border-gray-800 pt-4">
-            <p class="text-sm text-gray-400 mb-2">Put the entire platform into maintenance mode. Users will see a 503 error. <strong class="text-amber-400">Save the bypass URL — no shell on Render free tier.</strong></p>
-            <form method="POST" action="{{ route('admin.settings.maintenance') }}">
-                @csrf
-                @if(($settings['maintenance_mode'] ?? '0') === '1')
-                    <button type="submit"
-                            onclick="return confirm('Disable maintenance mode? The site goes live immediately and all users can access it.');"
-                            class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition">
-                        🟢 Disable Maintenance Mode
-                    </button>
-                @else
-                    <button type="submit"
-                            onclick="return confirm('⚠️ ENABLE maintenance mode?\n\n• Every user will get a 503 error\n• The bypass URL /racksephnox-admin will be shown ONCE\n• Without it, only a shell can restore the site\n\nThere is no shell on Render free tier.\n\nProceed?');"
-                            class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition">
-                        🔴 Enable Maintenance Mode
-                    </button>
-                @endif
-            </form>
+            <div class="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                <div>
+                    <p class="text-sm text-white font-medium">Maintenance Mode</p>
+                    <p class="text-xs {{ ($settings['maintenance_mode'] ?? '0') === '1' ? 'text-red-400' : 'text-green-400' }}">
+                        {{ ($settings['maintenance_mode'] ?? '0') === '1' ? 'SITE IS DOWN — Bypass: /racksephnox-admin' : 'Site is live' }}
+                    </p>
+                </div>
+                <form method="POST" action="{{ route('admin.settings.maintenance') }}"
+                      onsubmit="return confirm({{ ($settings['maintenance_mode'] ?? '0') === '1' ? 'true' : 'false' }} ? 'Disable maintenance mode?' : '⚠️ ENABLE maintenance mode? All users will get 503. Bypass URL: /racksephnox-admin — SAVE IT. No shell on Render free tier.');">
+                    @csrf
+                    @if(($settings['maintenance_mode'] ?? '0') === '1')
+                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded text-sm">Disable</button>
+                    @else
+                        <button type="submit" class="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded text-sm">Enable</button>
+                    @endif
+                </form>
+            </div>
         </div>
     </div>
+
 </div>
 @endsection

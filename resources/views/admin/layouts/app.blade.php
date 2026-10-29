@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('page-title', 'Admin') · {{ config('app.name', 'Racksephnox') }}</title>
-    
+
     @php
         $manifestExists = file_exists(public_path('build/manifest.json'));
         $hotExists      = file_exists(public_path('hot'));
@@ -14,7 +14,7 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @else
         <style>
-            body { background-color: #0a0a0a; color: #9ca3af; font-family: sans-serif; margin: 0; }
+            body { background-color: #0a0a0a; color: #9ca3af; font-family: -apple-system, sans-serif; margin: 0; line-height: 1.5; }
             .text-gold { color: #D4AF37; }
             .bg-gray-900 { background-color: #111827; }
             .bg-gray-950 { background-color: #030712; }
@@ -28,8 +28,6 @@
             .p-6 { padding: 1.5rem; }
             .border-r { border-right: 1px solid #1f2937; }
             .border-b { border-bottom: 1px solid #1f2937; }
-            .hidden { display: none; }
-            @media (min-width: 1024px) { .lg\:static { position: static; } .lg\:translate-x-0 { transform: translateX(0); } .lg\:hidden { display: none; } }
             a { text-decoration: none; }
         </style>
     @endif
@@ -38,11 +36,13 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <?php $errors = $errors ?? new \Illuminate\Support\ViewErrorBag(); ?>
-<body class="bg-gray-900 text-gray-300 font-sans antialiased" x-data="{ sidebarOpen: false }">
+<body class="bg-gray-900 text-gray-300 font-sans antialiased" x-data="{ sidebarOpen: false, userMenuOpen: false, clock: '' }" x-init="setInterval(() => clock = new Date().toLocaleTimeString(), 1000)">
     <div class="flex h-screen overflow-hidden">
 
-        <div x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 z-20 bg-black bg-opacity-50 lg:hidden"></div>
+        {{-- Mobile overlay --}}
+        <div x-show="sidebarOpen" @click="sidebarOpen = false" x-cloak class="fixed inset-0 z-20 bg-black bg-opacity-50 lg:hidden"></div>
 
+        {{-- Sidebar --}}
         <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" class="fixed inset-y-0 left-0 z-30 w-64 bg-gray-950 border-r border-gray-800 flex flex-col transition-transform duration-300 transform lg:static lg:translate-x-0">
             <div class="flex items-center justify-center h-16 border-b border-gray-800">
                 <a href="{{ route('admin.dashboard') }}" class="text-xl font-bold text-gold tracking-widest uppercase">Racksephnox</a>
@@ -88,9 +88,9 @@
                         <i class="fas fa-dice w-6 text-center mr-2"></i> Lottery
                     </a>
                     <a href="{{ route('admin.monitoring.index') }}" class="flex items-center px-3 py-2.5 text-sm font-medium rounded-lg {{ request()->routeIs('admin.monitoring.*') ? 'bg-gray-800 text-gold' : 'text-gray-400 hover:bg-gray-800 hover:text-white transition' }}">
-                    <i class="fas fa-heartbeat w-6 text-center mr-2 text-red-400"></i> Monitoring
-                </a>
-                <a href="{{ route('admin.settings.index') }}" class="flex items-center px-3 py-2.5 text-sm font-medium rounded-lg {{ request()->routeIs('admin.settings.*') ? 'bg-gray-800 text-gold' : 'text-gray-400 hover:bg-gray-800 hover:text-white transition' }}">
+                        <i class="fas fa-heartbeat w-6 text-center mr-2 text-red-400"></i> Monitoring
+                    </a>
+                    <a href="{{ route('admin.settings.index') }}" class="flex items-center px-3 py-2.5 text-sm font-medium rounded-lg {{ request()->routeIs('admin.settings.*') ? 'bg-gray-800 text-gold' : 'text-gray-400 hover:bg-gray-800 hover:text-white transition' }}">
                         <i class="fas fa-cog w-6 text-center mr-2"></i> Settings
                     </a>
                 @endif
@@ -112,6 +112,7 @@
             </div>
         </aside>
 
+        {{-- Main content --}}
         <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
             <header class="bg-gray-900 border-b border-gray-800 h-16 flex items-center justify-between px-4 sm:px-6">
                 <div class="flex items-center gap-3">
@@ -121,6 +122,8 @@
                     <div>
                         @hasSection('page-title')
                             <h1 class="text-lg font-semibold text-white">@yield('page-title')</h1>
+                        @else
+                            <h1 class="text-lg font-semibold text-white">Admin</h1>
                         @endif
                         @hasSection('breadcrumbs')
                             <div class="text-xs text-gray-500">@yield('breadcrumbs')</div>
@@ -128,6 +131,13 @@
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
+                    <span class="hidden md:inline text-xs text-gray-500 font-mono" x-text="clock"></span>
+                    <form method="POST" action="{{ route('admin.refresh-cache') }}" class="hidden sm:inline">
+                        @csrf
+                        <button type="submit" class="text-xs text-gray-400 hover:text-gold transition" title="Clear dashboard cache">
+                            <i class="fas fa-sync-alt mr-1"></i> Refresh
+                        </button>
+                    </form>
                     <span class="hidden sm:inline text-xs text-gray-500 px-2 py-1 bg-gray-800 rounded">{{ auth()->user()->role_label }}</span>
                     <a href="{{ url('/') }}" target="_blank" class="text-sm text-gray-400 hover:text-gold transition">
                         <i class="fas fa-external-link-alt mr-1"></i> <span class="hidden sm:inline">View Site</span>
@@ -136,9 +146,29 @@
             </header>
 
             <main class="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#0a0a0a]">
+                @if(session('success'))
+                    <div class="mb-4 bg-green-500/20 border border-green-500/40 rounded-lg p-3 text-green-300 text-sm">
+                        <i class="fas fa-check-circle mr-2"></i> {{ session('success') }}
+                    </div>
+                @endif
+                @if(session('error'))
+                    <div class="mb-4 bg-red-500/20 border border-red-500/40 rounded-lg p-3 text-red-300 text-sm">
+                        <i class="fas fa-exclamation-circle mr-2"></i> {{ session('error') }}
+                    </div>
+                @endif
+                @if($errors->any())
+                    <div class="mb-4 bg-red-500/20 border border-red-500/40 rounded-lg p-3 text-red-300 text-sm">
+                        <ul class="list-disc list-inside space-y-1">
+                            @foreach($errors->all() as $error) <li>{{ $error }}</li> @endforeach
+                        </ul>
+                    </div>
+                @endif
+
                 @yield('content')
             </main>
         </div>
     </div>
+
+    <style>[x-cloak]{display:none !important}</style>
 </body>
 </html>

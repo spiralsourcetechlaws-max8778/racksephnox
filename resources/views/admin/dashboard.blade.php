@@ -2,22 +2,19 @@
 
 @section('page-title', 'Dashboard')
 @section('content')
-@php
-    $me = auth()->user();
-    $isSuper   = $me->hasRole('super_admin');
-    $isFinance = $me->hasRole('super_admin', 'finance');
-    $isSupport = $me->hasRole('super_admin', 'support');
 
-    $dbUp = true; $cacheUp = true; $pendingMigs = 0;
-    try { \DB::connection()->getPdo(); } catch (\Throwable $e) { $dbUp = false; }
-    try { \Cache::put('dash_ping', '1', 5); $cacheUp = \Cache::get('dash_ping') === '1'; \Cache::forget('dash_ping'); } catch (\Throwable $e) { $cacheUp = false; }
-    try { \Artisan::call('migrate:status'); $pendingMigs = substr_count(\Artisan::output(), 'Pending'); } catch (\Throwable $e) {}
-    $critical = !$dbUp || !$cacheUp;
-@endphp
+<div class="space-y-6">
 
-<div x-data="adminDashboard()" x-init="init()" class="space-y-6">
+    {{-- ═══ SYSTEM HEALTH BANNER ═══ --}}
+    @php
+        $dbUp = true; $cacheUp = true; $pendingMigs = 0;
+        try { \DB::connection()->getPdo(); } catch (\Throwable $e) { $dbUp = false; }
+        try { \Cache::put('dash_ping', '1', 5); $cacheUp = \Cache::get('dash_ping') === '1'; \Cache::forget('dash_ping'); } catch (\Throwable $e) { $cacheUp = false; }
+        try { \Artisan::call('migrate:status'); $pendingMigs = substr_count(\Artisan::output(), 'Pending'); } catch (\Throwable $e) {}
+        $critical = !$dbUp || !$cacheUp;
+    @endphp
 
-    @if($isSuper)
+    @if(auth()->user()->hasRole('super_admin'))
         <a href="{{ route('admin.monitoring.index') }}" class="flex items-center justify-between p-3 rounded-lg border transition {{ $critical ? 'bg-red-500/10 border-red-500/40' : 'bg-gray-900 border-gray-800 hover:border-gold/40' }}">
             <div class="flex items-center gap-3">
                 <span class="relative flex h-3 w-3">
@@ -26,219 +23,243 @@
                 </span>
                 <div>
                     <p class="text-sm font-semibold {{ $critical ? 'text-red-400' : 'text-green-400' }}">{{ $critical ? 'System Degraded' : 'All Systems Operational' }}</p>
-                    <p class="text-xs text-gray-500">DB {{ $dbUp ? 'up' : 'DOWN' }} &middot; Cache {{ $cacheUp ? 'up' : 'DOWN' }}@if($pendingMigs > 0) &middot; <span class="text-yellow-400">{{ $pendingMigs }} pending migrations</span>@endif</p>
+                    <p class="text-xs text-gray-500">DB {{ $dbUp ? 'up' : 'DOWN' }} · Cache {{ $cacheUp ? 'up' : 'DOWN' }}@if($pendingMigs > 0) · <span class="text-yellow-400">{{ $pendingMigs }} pending migrations</span>@endif</p>
                 </div>
             </div>
-            <span class="text-xs text-gray-400">View monitoring</span>
+            <span class="text-xs text-gray-400">View monitoring →</span>
         </a>
     @endif
 
-    @if($isFinance && (($stats['pending_deposits'] ?? 0) + ($stats['pending_withdrawals'] ?? 0)) > 0)
+    {{-- ═══ QUICK ACTION BANNERS (finance) ═══ --}}
+    @if(auth()->user()->hasRole('super_admin', 'finance') && (($stats['pending_deposits'] ?? 0) + ($stats['pending_withdrawals'] ?? 0)) > 0)
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             @if(($stats['pending_deposits'] ?? 0) > 0)
-                <a href="{{ route('admin.deposits.index') }}" class="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-lg">
+                <a href="{{ route('admin.deposits.index') }}" class="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-lg hover:bg-yellow-500/20 transition">
                     <div>
-                        <p class="text-yellow-400 font-semibold">{{ $stats['pending_deposits'] }} pending deposits</p>
-                        <p class="text-xs text-gray-400">KES {{ number_format($stats['pending_deposits_amount'] ?? 0, 2) }}</p>
+                        <p class="text-xs text-yellow-400 uppercase font-semibold">Pending Deposits</p>
+                        <p class="text-2xl font-bold text-yellow-300">{{ $stats['pending_deposits'] }}</p>
+                        <p class="text-xs text-yellow-500/80">KES {{ number_format($stats['pending_deposits_amount'] ?? 0, 2) }} to review</p>
                     </div>
-                    <span class="text-yellow-400 text-sm">Review</span>
+                    <i class="fas fa-arrow-right text-yellow-400 text-xl"></i>
                 </a>
             @endif
             @if(($stats['pending_withdrawals'] ?? 0) > 0)
-                <a href="{{ route('admin.withdrawals.index') }}" class="flex items-center justify-between bg-orange-500/10 border border-orange-500/30 p-4 rounded-lg">
+                <a href="{{ route('admin.withdrawals.index') }}" class="flex items-center justify-between bg-orange-500/10 border border-orange-500/30 p-4 rounded-lg hover:bg-orange-500/20 transition">
                     <div>
-                        <p class="text-orange-400 font-semibold">{{ $stats['pending_withdrawals'] }} pending withdrawals</p>
-                        <p class="text-xs text-gray-400">KES {{ number_format($stats['pending_withdrawals_amount'] ?? 0, 2) }}</p>
+                        <p class="text-xs text-orange-400 uppercase font-semibold">Pending Withdrawals</p>
+                        <p class="text-2xl font-bold text-orange-300">{{ $stats['pending_withdrawals'] }}</p>
+                        <p class="text-xs text-orange-500/80">KES {{ number_format($stats['pending_withdrawals_amount'] ?? 0, 2) }} to review</p>
                     </div>
-                    <span class="text-orange-400 text-sm">Review</span>
+                    <i class="fas fa-arrow-right text-orange-400 text-xl"></i>
                 </a>
             @endif
         </div>
     @endif
 
-    @if($isSupport && ($stats['pending_kyc'] ?? 0) > 0)
-        <a href="{{ route('admin.kyc.index') }}" class="flex items-center justify-between bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg">
-            <div>
-                <p class="text-blue-400 font-semibold">{{ $stats['pending_kyc'] }} KYC documents pending</p>
-                <p class="text-xs text-gray-400">Approve or reject to unblock users</p>
+    {{-- ═══ KPI CARDS ═══ --}}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Total Users</p>
+            <p class="text-2xl font-bold text-white mt-1">{{ number_format($stats['total_users'] ?? 0) }}</p>
+            <p class="text-xs text-green-400 mt-1">+{{ $stats['new_users_today'] ?? 0 }} today</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Total Invested</p>
+            <p class="text-2xl font-bold text-gold mt-1">KES {{ number_format($stats['total_invested'] ?? 0, 0) }}</p>
+            <p class="text-xs text-gray-500 mt-1">Machines: KES {{ number_format($stats['total_machine_invested'] ?? 0, 0) }}</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Interest Paid</p>
+            <p class="text-2xl font-bold text-green-400 mt-1">KES {{ number_format($stats['total_interest_paid'] ?? 0, 0) }}</p>
+            <p class="text-xs text-gray-500 mt-1">Referral bonuses: KES {{ number_format($stats['total_referral_bonus'] ?? 0, 0) }}</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Pending KYC</p>
+            <p class="text-2xl font-bold text-yellow-400 mt-1">{{ $stats['pending_kyc'] ?? 0 }}</p>
+            <p class="text-xs text-gray-500 mt-1">Awaiting review</p>
+        </div>
+    </div>
+
+    {{-- ═══ CHARTS ROW ═══ --}}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-gold mb-3">Revenue Trend (30 days)</h3>
+            <div style="height: 220px;">
+                <canvas id="revenueChart"></canvas>
             </div>
-            <span class="text-blue-400 text-sm">Review</span>
-        </a>
-    @endif
-
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        @if($isSupport)
-            <a href="{{ route('admin.users.index') }}" class="admin-card p-5 hover:ring-2 hover:ring-gold/50 transition">
-                <p class="text-sm text-gold-400">Total Users</p>
-                <p class="text-3xl font-bold text-gold">{{ number_format($stats['total_users'] ?? 0) }}</p>
-                <p class="text-xs text-green-400">+{{ number_format($stats['new_users_today'] ?? 0) }} today</p>
-            </a>
-            <a href="{{ route('admin.kyc.index') }}" class="admin-card p-5 hover:ring-2 hover:ring-gold/50 transition">
-                <p class="text-sm text-gold-400">Pending KYC</p>
-                <p class="text-3xl font-bold text-blue-400">{{ $stats['pending_kyc'] ?? 0 }}</p>
-                <p class="text-xs text-gold-400">Docs to review</p>
-            </a>
-        @endif
-        @if($isFinance)
-            <div class="admin-card p-5">
-                <p class="text-sm text-gold-400">Total Invested</p>
-                <p class="text-3xl font-bold text-gold">KES {{ number_format($stats['total_invested'] ?? 0, 0) }}</p>
-                <p class="text-xs text-gray-500">{{ $stats['total_machines'] ?? 0 }} active machines</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-gold mb-3">User Growth (30 days)</h3>
+            <div style="height: 220px;">
+                <canvas id="userGrowthChart"></canvas>
             </div>
-            <a href="{{ route('admin.deposits.index') }}" class="admin-card p-5 hover:ring-2 hover:ring-gold/50 transition">
-                <p class="text-sm text-gold-400">Pending Deposits</p>
-                <p class="text-3xl font-bold text-yellow-400">{{ $stats['pending_deposits'] ?? 0 }}</p>
-                <p class="text-xs text-gold-400">KES {{ number_format($stats['pending_deposits_amount'] ?? 0, 0) }}</p>
-            </a>
-            <a href="{{ route('admin.withdrawals.index') }}" class="admin-card p-5 hover:ring-2 hover:ring-gold/50 transition">
-                <p class="text-sm text-gold-400">Pending Withdrawals</p>
-                <p class="text-3xl font-bold text-orange-400">{{ $stats['pending_withdrawals'] ?? 0 }}</p>
-                <p class="text-xs text-gold-400">KES {{ number_format($stats['pending_withdrawals_amount'] ?? 0, 0) }}</p>
-            </a>
-        @endif
-        <div class="admin-card p-5">
-            <p class="text-sm text-gold-400">Interest Paid</p>
-            <p class="text-3xl font-bold text-green-400">KES {{ number_format($stats['total_interest_paid'] ?? 0, 0) }}</p>
-            <p class="text-xs text-gray-500">lifetime</p>
         </div>
     </div>
 
-    @if($isFinance)
-    <div class="admin-card p-5">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gold">Loan Portfolio</h3>
-            <a href="{{ route('admin.loans.index') }}" class="text-xs text-gold-400 hover:text-gold">Manage</a>
+    {{-- ═══ LOAN STATS ═══ --}}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Active Loans</p>
+            <p class="text-xl font-bold text-white mt-1">{{ $loanStats['active_loans'] ?? 0 }}</p>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div class="bg-gray-900/50 p-3 rounded"><p class="text-xs text-gray-400 uppercase">Pending</p><p class="text-xl font-bold text-yellow-400">{{ $loanStats['pending_loans'] ?? 0 }}</p></div>
-            <div class="bg-gray-900/50 p-3 rounded"><p class="text-xs text-gray-400 uppercase">Active</p><p class="text-xl font-bold text-green-400">{{ $loanStats['active_loans'] ?? 0 }}</p></div>
-            <div class="bg-gray-900/50 p-3 rounded"><p class="text-xs text-gray-400 uppercase">Outstanding</p><p class="text-xl font-bold text-red-400">KES {{ number_format($loanStats['total_outstanding'] ?? 0, 0) }}</p></div>
-            <div class="bg-gray-900/50 p-3 rounded"><p class="text-xs text-gray-400 uppercase">Collected</p><p class="text-xl font-bold text-gold">KES {{ number_format($loanStats['total_collected'] ?? 0, 0) }}</p></div>
-            <div class="bg-gray-900/50 p-3 rounded"><p class="text-xs text-gray-400 uppercase">Overdue</p><p class="text-xl font-bold text-red-600">{{ $loanStats['overdue_repayments'] ?? 0 }}</p></div>
-            <div class="bg-gray-900/50 p-3 rounded"><p class="text-xs text-gray-400 uppercase">Completed</p><p class="text-xl font-bold text-white">{{ $loanStats['completed_loans'] ?? 0 }}</p></div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Outstanding</p>
+            <p class="text-xl font-bold text-orange-400 mt-1">KES {{ number_format($loanStats['total_outstanding'] ?? 0, 0) }}</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Collected</p>
+            <p class="text-xl font-bold text-green-400 mt-1">KES {{ number_format($loanStats['total_collected'] ?? 0, 0) }}</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-400 uppercase">Overdue</p>
+            <p class="text-xl font-bold text-red-400 mt-1">{{ $loanStats['overdue_repayments'] ?? 0 }}</p>
         </div>
     </div>
 
-    <div class="admin-card p-5">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gold">{{ $daysLeft ?? 26 }}-Day Revenue Target</h3>
-            <span class="text-xs text-gray-500">{{ $daysLeft ?? 26 }} days remaining</span>
-        </div>
-        <div class="flex justify-between items-baseline mb-2">
-            <span class="text-2xl font-bold text-gold">KES {{ number_format($revenueTarget->current_revenue ?? 0, 2) }}</span>
-            <span class="text-gray-500 text-sm">/ KES {{ number_format($revenueTarget->target_amount ?? 0, 0) }}</span>
-        </div>
-        <div class="w-full bg-gray-800 rounded-full h-3 mb-2">
-            <div class="bg-gradient-to-r from-gold to-green-500 h-3 rounded-full" style="width: {{ min(100, $targetProgress ?? 0) }}%"></div>
-        </div>
-        <p class="text-sm text-gray-400">Remaining: KES {{ number_format($remaining ?? 0, 2) }}</p>
-    </div>
-    @endif
-
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="admin-card p-5">
-            <h3 class="text-lg font-semibold text-gold mb-4">User Growth (30 days)</h3>
-            <canvas id="userGrowthChart" height="200"></canvas>
-        </div>
-        @if($isFinance)
-        <div class="admin-card p-5">
-            <h3 class="text-lg font-semibold text-gold mb-4">Revenue Trend (30 days)</h3>
-            <canvas id="revenueChart" height="200"></canvas>
-        </div>
+    {{-- ═══ RECENT ACTIVITY ═══ --}}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-gold mb-3">Recent Activity</h3>
+        @if(!empty($recentActivities))
+            <div class="space-y-2">
+                @foreach($recentActivities as $a)
+                    <div class="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center
+                                @if(($a['type'] ?? '') === 'deposit') bg-green-500/20 text-green-400
+                                @elseif(($a['type'] ?? '') === 'withdrawal') bg-red-500/20 text-red-400
+                                @elseif(($a['type'] ?? '') === 'loan') bg-orange-500/20 text-orange-400
+                                @else bg-gold/20 text-gold @endif">
+                                <i class="fas
+                                    @if(($a['type'] ?? '') === 'deposit') fa-arrow-down
+                                    @elseif(($a['type'] ?? '') === 'withdrawal') fa-arrow-up
+                                    @elseif(($a['type'] ?? '') === 'loan') fa-hand-holding-usd
+                                    @else fa-dice @endif text-xs"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm text-white">{{ $a['user'] ?? 'Unknown' }}</p>
+                                <p class="text-xs text-gray-500">{{ ucfirst($a['type'] ?? '') }} · {{ \Carbon\Carbon::parse($a['created_at'] ?? now())->diffForHumans() }}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            @if(isset($a['amount']))
+                                <p class="text-sm font-medium text-white">KES {{ number_format($a['amount'], 2) }}</p>
+                            @elseif(isset($a['bet']))
+                                <p class="text-sm font-medium text-white">Bet: KES {{ number_format($a['bet'], 2) }}</p>
+                            @endif
+                            <p class="text-xs text-gray-500">{{ ucfirst($a['status'] ?? '') }}</p>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
         @else
-        <div class="admin-card p-5">
-            <h3 class="text-lg font-semibold text-gold mb-4">Lottery Activity (30 days)</h3>
-            <canvas id="lotteryChart" height="200"></canvas>
-        </div>
+            <p class="text-sm text-gray-500">No recent activity.</p>
         @endif
     </div>
 
-    @if($isFinance)
-    <div class="admin-card p-5">
-        <h3 class="text-lg font-semibold text-gold mb-4">Lottery Activity (30 days)</h3>
-        <canvas id="lotteryChart" height="200"></canvas>
-    </div>
-    @endif
+    {{-- ═══ RECENT LISTS ═══ --}}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-gold mb-3">Latest Users</h3>
+            @forelse($recentUsers ?? [] as $u)
+                <div class="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
+                    <div>
+                        <p class="text-sm text-white">{{ $u->name }}</p>
+                        <p class="text-xs text-gray-500">{{ $u->email }}</p>
+                    </div>
+                    <span class="text-xs text-gray-400">{{ optional($u->created_at)->diffForHumans() }}</span>
+                </div>
+            @empty
+                <p class="text-sm text-gray-500">No users yet.</p>
+            @endforelse
+        </div>
 
-    <div class="admin-card p-5">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gold">Recent Platform Activity</h3>
-            <button @click="refreshStats" class="text-gold-400 hover:text-gold text-sm">
-                <i class="fas fa-sync-alt" :class="{'animate-spin': refreshing}"></i> Refresh
-            </button>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead class="border-b border-gray-800 text-gray-400 text-xs uppercase">
-                    <tr>
-                        <th class="px-2 py-2 text-left">Time</th>
-                        <th class="px-2 py-2 text-left">User</th>
-                        <th class="px-2 py-2 text-left">Type</th>
-                        <th class="px-2 py-2 text-left">Details</th>
-                        <th class="px-2 py-2 text-left">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($recentActivities ?? [] as $activity)
-                        <tr class="border-b border-gray-800/50 hover:bg-gray-800/30">
-                            <td class="px-2 py-2 text-gray-400 text-xs">{{ $activity['created_at']?->diffForHumans() ?? '-' }}</td>
-                            <td class="px-2 py-2">
-                                @if(isset($activity['user_id']))
-                                    <a href="{{ route('admin.users.show', $activity['user_id']) }}" class="text-white hover:text-gold">{{ $activity['user'] }}</a>
-                                @else
-                                    <span class="text-white">{{ $activity['user'] }}</span>
-                                @endif
-                            </td>
-                            <td class="px-2 py-2 text-xs font-bold uppercase">
-                                @if($activity['type'] == 'deposit')<span class="text-green-400">Deposit</span>
-                                @elseif($activity['type'] == 'withdrawal')<span class="text-orange-400">Withdrawal</span>
-                                @elseif($activity['type'] == 'loan')<span class="text-blue-400">Loan</span>
-                                @else<span class="text-gold">Lottery</span>@endif
-                            </td>
-                            <td class="px-2 py-2 text-gray-300 text-xs">
-                                @if(in_array($activity['type'], ['deposit', 'withdrawal', 'loan']))
-                                    KES {{ number_format($activity['amount'] ?? 0, 2) }}
-                                @else
-                                    Bet: KES {{ number_format($activity['bet'] ?? 0, 2) }} - Win: KES {{ number_format($activity['win'] ?? 0, 2) }}
-                                @endif
-                            </td>
-                            <td class="px-2 py-2">
-                                @if(isset($activity['status']))
-                                    <span class="px-2 py-0.5 rounded-full text-xs {{ $activity['status'] == 'pending' ? 'bg-yellow-500/20 text-yellow-400' : (in_array($activity['status'], ['verified','completed','active','approved']) ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400') }}">{{ ucfirst($activity['status']) }}</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="5" class="p-6 text-center text-gray-500">No activity yet.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-gold mb-3">Recent Loans</h3>
+            @forelse($recentLoans ?? [] as $l)
+                <div class="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
+                    <div>
+                        <p class="text-sm text-white">{{ $l->user?->name ?? 'Unknown' }}</p>
+                        <p class="text-xs text-gray-500">{{ $l->product?->name ?? 'Loan' }} · {{ ucfirst($l->status) }}</p>
+                    </div>
+                    <p class="text-sm font-medium text-gold">KES {{ number_format($l->principal ?? 0, 0) }}</p>
+                </div>
+            @empty
+                <p class="text-sm text-gray-500">No loans yet.</p>
+            @endforelse
         </div>
     </div>
+
+    {{-- ═══ REVENUE TARGET ═══ --}}
+    @if(isset($revenueTarget) && $targetProgress !== null)
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm font-semibold text-gold">Revenue Target</h3>
+                <span class="text-xs text-gray-400">{{ $daysLeft }} days remaining</span>
+            </div>
+            <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
+                <div class="bg-gold h-3 rounded-full transition-all" style="width: {{ min(100, $targetProgress) }}%"></div>
+            </div>
+            <div class="flex justify-between mt-2 text-xs text-gray-400">
+                <span>KES {{ number_format($revenueTarget->current_revenue, 0) }} of KES {{ number_format($revenueTarget->target_amount, 0) }}</span>
+                <span class="text-gold font-semibold">{{ number_format($targetProgress, 1) }}%</span>
+            </div>
+        </div>
+    @endif
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-function adminDashboard() {
-    return {
-        refreshing: false,
-        init() { this.initCharts(); setInterval(() => this.refreshStats(), 60000); },
-        initCharts() {
-            const goldColor = '#D4AF37';
-            const c1 = document.getElementById('userGrowthChart')?.getContext('2d');
-            if (c1) new Chart(c1, { type: 'line', data: { labels: {!! json_encode(array_keys($userGrowth ?? [])) !!}, datasets: [{ label: 'New Users', data: {!! json_encode(array_values($userGrowth ?? [])) !!}, borderColor: goldColor, backgroundColor: 'rgba(212,175,55,0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: goldColor } }, x: { ticks: { color: goldColor } } } } });
-            const c2 = document.getElementById('revenueChart')?.getContext('2d');
-            if (c2) new Chart(c2, { type: 'bar', data: { labels: {!! json_encode($revenueTrend['labels'] ?? []) !!}, datasets: [{ label: 'Revenue (KES)', data: {!! json_encode($revenueTrend['data'] ?? []) !!}, backgroundColor: goldColor, borderRadius: 6 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: goldColor } }, x: { ticks: { color: goldColor } } } } });
-            const c3 = document.getElementById('lotteryChart')?.getContext('2d');
-            if (c3) new Chart(c3, { type: 'line', data: { labels: {!! json_encode($lotteryActivity['labels'] ?? []) !!}, datasets: [{ label: 'Spins', data: {!! json_encode($lotteryActivity['spins'] ?? []) !!}, borderColor: '#FFD700', yAxisID: 'y', tension: 0.4 }, { label: 'Bets', data: {!! json_encode($lotteryActivity['bets'] ?? []) !!}, borderColor: goldColor, backgroundColor: 'rgba(212,175,55,0.15)', fill: true, yAxisID: 'y1', tension: 0.4 }] }, options: { responsive: true, plugins: { legend: { labels: { color: goldColor } } }, scales: { y: { ticks: { color: '#FFD700' } }, y1: { position: 'right', ticks: { color: goldColor }, grid: { drawOnChartArea: false } }, x: { ticks: { color: goldColor } } } } });
-        },
-        async refreshStats() {
-            this.refreshing = true;
-            try { const r = await fetch('{{ route("admin.stats") }}'); if (r.ok) await r.json(); } catch(e) {}
-            finally { this.refreshing = false; }
-        },
+document.addEventListener('DOMContentLoaded', function() {
+    const chartDefaults = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
+            x: { grid: { display: false }, ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 45 } },
+        }
     };
-}
+
+    try {
+        const revenueEl = document.getElementById('revenueChart');
+        if (revenueEl) {
+            new Chart(revenueEl, {
+                type: 'line',
+                data: {
+                    labels: {!! json_encode($revenueTrend['labels'] ?? []) !!},
+                    datasets: [{
+                        label: 'Revenue (KES)',
+                        data: {!! json_encode($revenueTrend['data'] ?? []) !!},
+                        borderColor: '#D4AF37',
+                        backgroundColor: 'rgba(212,175,55,0.15)',
+                        fill: true,
+                        tension: 0.4,
+                    }]
+                },
+                options: chartDefaults,
+            });
+        }
+    } catch(e) { console.error('Revenue chart failed', e); }
+
+    try {
+        const growthEl = document.getElementById('userGrowthChart');
+        if (growthEl) {
+            const growthData = @json($userGrowth ?? []);
+            new Chart(growthEl, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(growthData),
+                    datasets: [{
+                        label: 'New Users',
+                        data: Object.values(growthData),
+                        backgroundColor: '#D4AF37',
+                    }]
+                },
+                options: chartDefaults,
+            });
+        }
+    } catch(e) { console.error('User growth chart failed', e); }
+});
 </script>
 @endsection
