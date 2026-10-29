@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
 
 class User extends Authenticatable
 {
@@ -37,8 +38,6 @@ class User extends Authenticatable
         'has_promo' => 'boolean',
         'promo_expires_at' => 'datetime',
     ];
-
-    // ========== ROLE HELPERS ==========
 
     public function hasRole(string ...$roles): bool
     {
@@ -73,33 +72,33 @@ class User extends Authenticatable
         };
     }
 
-    // ========== BOOT ==========
-
     protected static function booted()
     {
         static::created(function ($user) {
-            if (empty($user->referral_code)) {
-                $user->referral_code = strtoupper(Str::random(8));
-                $user->saveQuietly();
-            }
-            if (!$user->wallet) {
-                $wallet = $user->wallet()->create(['user_id' => $user->id, 'balance' => 0]);
-                $wallet->credit(60, 'Welcome bonus');
-            }
-            if (!$user->tradingAccount) {
-                $user->tradingAccount()->create(['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0]);
-            }
-            if (!$user->tradingProfile) {
-                $user->tradingProfile()->create([
-                    'username' => 'trader_' . $user->id,
-                    'is_public' => true,
-                    'allow_copy_trading' => true,
-                ]);
+            try {
+                if (empty($user->referral_code)) {
+                    $user->referral_code = strtoupper(Str::random(8));
+                    $user->saveQuietly();
+                }
+                if (Schema::hasTable('wallets') && !$user->wallet) {
+                    $wallet = $user->wallet()->create(['user_id' => $user->id, 'balance' => 0]);
+                    $wallet->credit(60, 'Welcome bonus');
+                }
+                if (Schema::hasTable('trading_accounts') && !$user->tradingAccount) {
+                    $user->tradingAccount()->create(['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0]);
+                }
+                if (Schema::hasTable('trading_profiles') && !$user->tradingProfile) {
+                    $user->tradingProfile()->create([
+                        'username' => 'trader_' . $user->id,
+                        'is_public' => true,
+                        'allow_copy_trading' => true,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('User booted creation failed: ' . $e->getMessage());
             }
         });
     }
-
-    // ========== RELATIONSHIPS ==========
 
     public function wallet() { return $this->hasOne(Wallet::class); }
     public function investments() { return $this->hasMany(Investment::class); }

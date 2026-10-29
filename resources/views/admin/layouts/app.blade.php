@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('page-title', 'Admin') · {{ config('app.name', 'Racksephnox') }}</title>
+    
     @php
         $manifestExists = file_exists(public_path('build/manifest.json'));
         $hotExists      = file_exists(public_path('hot'));
@@ -12,8 +13,27 @@
     @if($manifestExists || $hotExists)
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @else
-        <style>body { background: #0a0a0a; color: #fff; font-family: sans-serif; } .text-gold { color: #D4AF37; } .bg-gray-900 { background: #111; } .bg-gray-950 { background: #000; } .flex { display: flex; } .h-screen { height: 100vh; } .w-64 { width: 16rem; }</style>
+        <style>
+            body { background-color: #0a0a0a; color: #9ca3af; font-family: sans-serif; margin: 0; }
+            .text-gold { color: #D4AF37; }
+            .bg-gray-900 { background-color: #111827; }
+            .bg-gray-950 { background-color: #030712; }
+            .bg-gray-800 { background-color: #1f2937; }
+            .text-white { color: #fff; }
+            .flex { display: flex; }
+            .h-screen { height: 100vh; }
+            .w-64 { width: 16rem; }
+            .flex-1 { flex: 1; }
+            .p-4 { padding: 1rem; }
+            .p-6 { padding: 1.5rem; }
+            .border-r { border-right: 1px solid #1f2937; }
+            .border-b { border-bottom: 1px solid #1f2937; }
+            .hidden { display: none; }
+            @media (min-width: 1024px) { .lg\:static { position: static; } .lg\:translate-x-0 { transform: translateX(0); } .lg\:hidden { display: none; } }
+            a { text-decoration: none; }
+        </style>
     @endif
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>

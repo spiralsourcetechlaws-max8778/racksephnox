@@ -3,194 +3,110 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\TradingProfile;
-use App\Models\FollowedTrader;
 use App\Models\CopyTrade;
-use App\Models\TradeOrder;
-use App\Services\Trading\TradingEngine;
+use App\Models\FollowedTrader;
+use App\Models\TradingProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class SocialTradingController extends Controller
 {
-    protected $tradingEngine;
-
-    public function __construct(TradingEngine $tradingEngine)
-    {
-        $this->tradingEngine = $tradingEngine;
-    }
-
-    /**
-     * Leaderboard of top traders
-     */
     public function leaderboard()
     {
-        $topTraders = TradingProfile::where('is_public', true)
-            ->where('allow_copy_trading', true)
-            ->orderBy('total_pnl', 'desc')
-            ->orderBy('win_rate', 'desc')
+        $traders = TradingProfile::with('user')
+            ->where('is_public', true)
+            ->orderByDesc('total_pnl')
             ->take(20)
-            ->with('user')
             ->get();
-
-        return view('social-trading.leaderboard', compact('topTraders'));
+        return view('social-trading.leaderboard', compact('traders'));
     }
 
-    /**
-     * Show trader profile
-     */
     public function traderProfile($username)
     {
-        $profile = TradingProfile::where('username', $username)
-            ->with('user')
-            ->firstOrFail();
-
-        $recentTrades = TradeOrder::where('user_id', $profile->user_id)
-            ->where('status', 'completed')
-            ->latest()
-            ->take(20)
-            ->get();
-
-        $isFollowing = Auth::check() ? FollowedTrader::where('follower_id', Auth::id())
-            ->where('trader_id', $profile->user_id)
-            ->exists() : false;
-
-        $followersCount = $profile->followers()->count();
-        $followingCount = $profile->following()->count();
-
-        return view('social-trading.profile', compact('profile', 'recentTrades', 'isFollowing', 'followersCount', 'followingCount'));
+        $profile = TradingProfile::with('user')->where('username', $username)->firstOrFail();
+        return view('social-trading.profile', compact('profile'));
     }
 
-    /**
-     * Show edit profile form
-     */
     public function editProfile()
     {
-        $user = Auth::user();
-        $profile = $user->tradingProfile ?? new TradingProfile();
-        
-        return view('social-trading.edit-profile', compact('profile', 'user'));
+        $profile = Auth::user()->tradingProfile()->firstOrCreate([
+            'username' => 'trader_' . Auth::id(),
+            'is_public' => true,
+            'allow_copy_trading' => true,
+        ]);
+        return view('social-trading.edit-profile', compact('profile'));
     }
 
-    /**
-     * Update trading profile
-     */
     public function updateProfile(Request $request)
     {
-        $request->validate([
-            'username' => 'required|string|max:50|unique:trading_profiles,username,' . Auth::id() . ',user_id',
+        $profile = Auth::user()->tradingProfile()->firstOrCreate([
+            'username' => 'trader_' . Auth::id()
+        ]);
+        
+        $validated = $request->validate([
+            'display_name' => 'nullable|string|max:50',
             'bio' => 'nullable|string|max:500',
             'is_public' => 'boolean',
             'allow_copy_trading' => 'boolean',
         ]);
 
-        $profile = TradingProfile::updateOrCreate(
-            ['user_id' => Auth::id()],
-            [
-                'username' => $request->username,
-                'bio' => $request->bio,
-                'is_public' => $request->boolean('is_public', true),
-                'allow_copy_trading' => $request->boolean('allow_copy_trading', true),
-            ]
-        );
-
-        return redirect()->route('social-trading.profile', $profile->username)
-            ->with('success', 'Profile updated successfully.');
+        $profile->update($validated);
+        return back()->with('success', 'Profile updated.');
     }
 
-    /**
-     * Follow a trader
-     */
-    public function follow(Request $request, User $trader)
+    public function follow(User $trader)
     {
-        $request->validate([
-            'copy_ratio' => 'required|numeric|min:1|max:100',
-            'auto_copy' => 'boolean',
-            'max_copy_amount' => 'nullable|numeric|min:10',
-        ]);
-
-        $user = Auth::user();
-
-        if ($user->id === $trader->id) {
-            return back()->withErrors(['error' => 'You cannot follow yourself.']);
+        if ($trader->id === Auth::id()) {
+            return back()->with('error', 'You cannot follow yourself.');
         }
 
-        FollowedTrader::updateOrCreate(
-            [
-                'follower_id' => $user->id,
-                'trader_id' => $trader->id,
-            ],
-            [
-                'copy_ratio' => $request->copy_ratio,
-                'auto_copy' => $request->boolean('auto_copy', true),
-                'max_copy_amount' => $request->max_copy_amount,
-            ]
-        );
+        $user = Auth::user();
+        if ($user->followedTraders()->where('trader_id', $trader->id)->exists()) {
+            return back()->with('info', 'Already following.');
+        }
 
-        // Update follower count
-        $trader->tradingProfile->increment('followers_count');
-        $user->tradingProfile->increment('following_count');
+        $user->followedTraders()->attach($trader->id, [
+            'copy_ratio' => 1.0,
+            'auto_copy' => false,
+            'max_copy_amount' => 1000
+        ]);
 
-        return back()->with('success', "You are now following {$trader->name}.");
+        return back()->with('success', 'Now following ' . $trader->name);
     }
 
-    /**
-     * Unfollow a trader
-     */
     public function unfollow(User $trader)
     {
-        $user = Auth::user();
-
-        FollowedTrader::where('follower_id', $user->id)
-            ->where('trader_id', $trader->id)
-            ->delete();
-
-        $trader->tradingProfile->decrement('followers_count');
-        $user->tradingProfile->decrement('following_count');
-
-        return back()->with('success', "Unfollowed {$trader->name}.");
+        Auth::user()->followedTraders()->detach($trader->id);
+        return back()->with('success', 'Unfollowed.');
     }
 
-    /**
-     * Get followed traders
-     */
     public function followed()
     {
-        $followed = Auth::user()->tradingProfile->following()
-            ->withPivot('copy_ratio', 'auto_copy', 'max_copy_amount')
-            ->get();
-
+        $profile = Auth::user()->tradingProfile()->firstOrCreate([
+            'username' => 'trader_' . Auth::id(),
+            'is_public' => true,
+            'allow_copy_trading' => true,
+        ]);
+        
+        $followed = Auth::user()->followedTraders()->get();
         return view('social-trading.followed', compact('followed'));
     }
 
-    /**
-     * Update copy settings for a followed trader
-     */
     public function updateSettings(Request $request, User $trader)
     {
-        $request->validate([
-            'copy_ratio' => 'required|numeric|min:1|max:100',
+        $validated = $request->validate([
+            'copy_ratio' => 'required|numeric|min:0.1|max:1',
             'auto_copy' => 'boolean',
-            'max_copy_amount' => 'nullable|numeric|min:10',
+            'max_copy_amount' => 'required|numeric|min:0',
         ]);
 
-        FollowedTrader::where('follower_id', Auth::id())
-            ->where('trader_id', $trader->id)
-            ->update([
-                'copy_ratio' => $request->copy_ratio,
-                'auto_copy' => $request->boolean('auto_copy', true),
-                'max_copy_amount' => $request->max_copy_amount,
-            ]);
-
-        return back()->with('success', 'Copy settings updated.');
+        Auth::user()->followedTraders()->updateExistingPivot($trader->id, $validated);
+        return back()->with('success', 'Settings updated.');
     }
 
-    /**
-     * Get copy trading history
-     */
-    public function copyHistory() {
-        $history = \App\Models\CopyTrade::where("follower_id", auth()->id())->latest()->get();
-        return view('social-trading.history', compact("history"));
+    public function copyHistory()
+    {
+        $history = CopyTrade::where('follower_id', Auth::id())->latest()->get();
+        return view('social-trading.history', compact('history'));
     }
 }

@@ -12,6 +12,7 @@ use App\Services\Loans\LoanCreditService;
 use App\Services\Investment\UnifiedInvestmentService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -23,18 +24,13 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
 
-        /* ============================================================
-         |  WEALTH PILLARS
-         ============================================================ */
         $walletBalance = (float) ($user->wallet?->balance ?? 0);
 
         $machineInvested = (float) MachineInvestment::where('user_id', $user->id)->sum('amount');
         $machineProfit   = (float) MachineInvestment::where('user_id', $user->id)->sum('profit_credited');
 
         $planInvested = (float) \App\Models\Investment::where('user_id', $user->id)->sum('amount');
-        $planProfit   = (float) \App\Models\Investment::where('user_id', $user->id)
-                            ->get()
-                            ->sum(fn ($i) => $i->profit_credited);
+        $planProfit   = (float) \App\Models\Investment::where('user_id', $user->id)->get()->sum(fn ($i) => $i->profit_credited);
 
         $totalInvested = $machineInvested + $planInvested;
         $totalProfit   = $machineProfit + $planProfit;
@@ -45,43 +41,24 @@ class DashboardController extends Controller
         $completedInvestments = MachineInvestment::where('user_id', $user->id)->where('status', 'completed')->count()
                               + \App\Models\Investment::where('user_id', $user->id)->where('status', 'completed')->count();
 
-        /* ============================================================
-         |  BANKING
-         ============================================================ */
         $totalDeposited = (float) Transaction::where('user_id', $user->id)->where('type', 'deposit')->sum('amount');
         $totalWithdrawn = abs((float) Transaction::where('user_id', $user->id)->where('type', 'withdrawal')->sum('amount'));
         $totalInterest  = (float) Transaction::where('user_id', $user->id)->where('type', 'interest')->sum('amount');
         $totalMachineInvested = $machineInvested;
 
-        /* ============================================================
-         |  RECENT TRANSACTIONS
-         ============================================================ */
-        $recentTransactions = Transaction::where('user_id', $user->id)
-            ->latest()
-            ->take(10)
-            ->get();
+        $recentTransactions = Transaction::where('user_id', $user->id)->latest()->take(10)->get();
 
-        /* ============================================================
-         |  PROFIT HISTORY (30 days)
-         ============================================================ */
-        $profitLabels = collect(range(29, 0))
-            ->map(fn ($i) => now()->subDays($i)->format('M d'))
-            ->toArray();
-
+        $profitLabels = collect(range(29, 0))->map(fn ($i) => now()->subDays($i)->format('M d'))->toArray();
         $profitData = MachineInvestment::where('user_id', $user->id)
             ->where('created_at', '>=', now()->subDays(30))
             ->get()
-            ->groupBy(fn ($inv) => $inv->created_at->format('Y-m-d'))
+            ->groupBy(fn ($inv) => optional($inv->created_at)->format('Y-m-d') ?? 'Unknown')
             ->map(fn ($g) => $g->sum('profit_credited'))
             ->values()
             ->toArray();
-
         $profitData    = array_pad($profitData, 30, 0);
         $profitHistory = ['labels' => $profitLabels, 'data' => $profitData];
 
-        /* ============================================================
-         |  WEEKLY PERFORMANCE
-         ============================================================ */
         $weeklyLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         $weeklyData   = [];
         for ($i = 0; $i < 7; $i++) {
@@ -91,9 +68,6 @@ class DashboardController extends Controller
         }
         $weeklyPerformance = ['labels' => $weeklyLabels, 'data' => $weeklyData];
 
-        /* ============================================================
-         |  PORTFOLIO BREAKDOWN
-         ============================================================ */
         $investmentsGrouped = MachineInvestment::where('user_id', $user->id)
             ->with('machine')
             ->get()
@@ -104,42 +78,23 @@ class DashboardController extends Controller
             'data'   => $investmentsGrouped->map(fn ($g) => $g->sum('amount'))->values()->toArray(),
         ];
 
-        /* ============================================================
-         |  BTC PRICE (cached)
-         ============================================================ */
         $btcPrice = Cache::remember('btc_price_kes', 60, fn () => rand(4_500_000, 5_500_000));
 
-        /* ============================================================
-         |  REFERRALS
-         ============================================================ */
         $referralCount = $user->referrals()->count();
-        $totalBonus    = (float) Transaction::where('user_id', $user->id)
-            ->where('type', 'referral_bonus')
-            ->sum('amount');
+        $totalBonus    = (float) Transaction::where('user_id', $user->id)->where('type', 'referral_bonus')->sum('amount');
 
-        /* ============================================================
-         |  NOTIFICATIONS
-         ============================================================ */
         $unreadNotificationsCount = 0;
-        try { if (\Illuminate\Support\Facades\Schema::hasTable("notifications")) { $unreadNotificationsCount = $user->unreadNotifications->count(); } } catch (\Throwable $e) {}
+        try {
+            if (Schema::hasTable('notifications')) {
+                $unreadNotificationsCount = $user->unreadNotifications->count();
+            }
+        } catch (\Throwable $e) {}
 
-        /* ============================================================
-         |  ROI
-         ============================================================ */
         $roi = $totalInvested > 0 ? round(($totalProfit / $totalInvested) * 100, 2) : 0;
 
-        /* ============================================================
-         |  LOTTERY JACKPOT
-         ============================================================ */
         $lotteryJackpot = LotteryGame::where('is_active', true)->first()?->progressive_jackpot ?? 1000;
 
-        /* ============================================================
-         |  LOANS DOMAIN
-         ============================================================ */
-        $loans = Loan::with('product')
-            ->where('user_id', $user->id)
-            ->latest()
-            ->get();
+        $loans = Loan::with('product')->where('user_id', $user->id)->latest()->get();
 
         $activeLoans    = $loans->where('status', 'active');
         $pendingLoans   = $loans->where('status', 'pending');
@@ -166,9 +121,6 @@ class DashboardController extends Controller
             return app(LoanCreditService::class)->recalculate($user);
         });
 
-        /* ============================================================
-         |  QUICK STATS SNAPSHOT
-         ============================================================ */
         $snapshot = [
             'wallet'        => $walletBalance,
             'invested'      => $totalInvested,
@@ -178,35 +130,12 @@ class DashboardController extends Controller
             'credit'        => $creditScore->score ?? 500,
         ];
 
-        /* ============================================================
-         |  RENDER
-         ============================================================ */
         return view('dashboard', compact(
-            'user',
-            'walletBalance',
-            'totalInvested',
-            'totalProfit',
-            'activeInvestments',
-            'completedInvestments',
-            'totalDeposited',
-            'totalWithdrawn',
-            'totalMachineInvested',
-            'totalInterest',
-            'recentTransactions',
-            'profitHistory',
-            'weeklyPerformance',
-            'portfolio',
-            'btcPrice',
-            'referralCount',
-            'totalBonus',
-            'unreadNotificationsCount',
-            'roi',
-            'lotteryJackpot',
-            'loans',
-            'loanStats',
-            'upcomingRepayments',
-            'creditScore',
-            'snapshot'
+            'user', 'walletBalance', 'totalInvested', 'totalProfit', 'activeInvestments',
+            'completedInvestments', 'totalDeposited', 'totalWithdrawn', 'totalMachineInvested',
+            'totalInterest', 'recentTransactions', 'profitHistory', 'weeklyPerformance',
+            'portfolio', 'btcPrice', 'referralCount', 'totalBonus', 'unreadNotificationsCount',
+            'roi', 'lotteryJackpot', 'loans', 'loanStats', 'upcomingRepayments', 'creditScore', 'snapshot'
         ));
     }
 }
