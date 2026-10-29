@@ -5,6 +5,7 @@
 
 @php
     $overall = $overall ?? 'ok';
+    $logErrors = $logErrors ?? [];
     $bannerClass = match($overall) {
         'error'   => 'bg-red-500/10 border-red-500/40',
         'warning' => 'bg-yellow-500/10 border-yellow-500/40',
@@ -115,12 +116,12 @@
 
     <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <h3 class="text-sm font-semibold text-gold mb-3 pb-2 border-b border-gray-800">Recent Errors (from laravel.log)</h3>
-        @if(empty($errors))
+        @if(empty($logErrors))
             <p class="text-sm text-gray-500">No recent errors.</p>
         @else
             <div class="space-y-1 font-mono text-xs max-h-96 overflow-y-auto">
-                @foreach($errors as $error)
-                    <div class="bg-gray-950 p-2 rounded text-red-400 overflow-x-auto whitespace-nowrap">{{ $error }}</div>
+                @foreach($logErrors as $logError)
+                    <div class="bg-gray-950 p-2 rounded text-red-400 overflow-x-auto whitespace-nowrap">{{ $logError }}</div>
                 @endforeach
             </div>
         @endif

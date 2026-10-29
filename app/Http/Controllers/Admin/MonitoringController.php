@@ -12,11 +12,15 @@ class MonitoringController extends Controller
     public function index()
     {
         $checks            = $this->monitoring->check();
-        $errors            = $this->monitoring->getRecentErrors(20);
+        $logErrors         = $this->monitoring->getRecentErrors(20);   // ← renamed
         $pendingMigrations = $checks['migrations']['pending'] ?? 0;
         $overall           = $this->calculateOverall($checks);
 
-        return view('admin.monitoring', compact('checks', 'errors', 'pendingMigrations', 'overall'));
+        // Important: do NOT name this $errors — that key is reserved for the
+        // ViewErrorBag that Laravel's ShareErrorsFromSession middleware injects
+        // into every view. Passing $errors as an array here breaks any layout
+        // that calls $errors->any() (which every admin/user layout does).
+        return view('admin.monitoring', compact('checks', 'logErrors', 'pendingMigrations', 'overall'));
     }
 
     protected function calculateOverall(array $checks): string
