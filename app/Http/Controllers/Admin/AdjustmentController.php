@@ -15,9 +15,6 @@ use Illuminate\Support\Facades\Schema;
 
 class AdjustmentController extends Controller
 {
-    // ══════════════════════════════════════════════════════════
-    //  WALLET — credit or debit user's KES wallet
-    // ══════════════════════════════════════════════════════════
     public function wallet(Request $request, User $user)
     {
         $validated = $request->validate([
@@ -27,15 +24,11 @@ class AdjustmentController extends Controller
         ]);
 
         $wallet = $user->wallet;
-        if (!$wallet) {
-            return back()->withErrors(['error' => 'User has no wallet.']);
-        }
+        if (!$wallet) return back()->withErrors(['error' => 'User has no wallet.']);
 
         $amount = (float) $validated['amount'];
-        $before = (float) $wallet->balance;
-
-        if ($validated['type'] === 'debit' && $amount > $before) {
-            return back()->withErrors(['error' => "Cannot debit KES {$amount} — user only has KES {$before}."]);
+        if ($validated['type'] === 'debit' && $amount > $wallet->balance) {
+            return back()->withErrors(['error' => "Cannot debit KES {$amount} — user only has KES {$wallet->balance}."]);
         }
 
         DB::transaction(function () use ($wallet, $validated, $amount, $user) {
@@ -46,57 +39,44 @@ class AdjustmentController extends Controller
                 $wallet->debit($amount, $desc);
             }
             $this->audit('wallet_' . $validated['type'], $user, [
-                'before' => $wallet->balance + ($validated['type'] === 'credit' ? -$amount : $amount),
                 'amount' => $amount,
                 'reason' => $validated['reason'],
             ]);
         });
 
         $verb = $validated['type'] === 'credit' ? 'Credited' : 'Debited';
-        return back()->with('success', "{$verb} KES " . number_format($amount, 2) . " — {$validated['reason']}");
+        return back()->with('success', "{$verb} KES " . number_format($amount, 2));
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  MACHINE — create a new machine investment for the user
-    // ══════════════════════════════════════════════════════════
     public function machine(Request $request, User $user)
     {
         $validated = $request->validate([
             'machine_id' => 'required|exists:machines,id',
             'amount'     => 'required|numeric|min:1',
             'vip_level'  => 'nullable|integer|in:0,1,2,3',
-            'fund_from'  => 'required|in:wallet,admin', // wallet = debit user's wallet; admin = free grant
+            'fund_from'  => 'required|in:wallet,admin',
             'reason'     => 'required|string|min:10|max:255',
         ]);
 
         $machine = Machine::findOrFail($validated['machine_id']);
         $amount  = (float) $validated['amount'];
 
-        // Machine bounds — RX machines store vip1/vip3_start_amount, not min/max.
-        // Fall back to min_amount/max_amount for non-RX machine types.
         $min = (float) ($machine->vip1_start_amount ?? $machine->min_amount ?? 0);
         $max = (float) ($machine->vip3_start_amount ?? 0);
         $max = $max > 0 ? $max * 10 : (float) ($machine->max_amount ?? 0);
 
-        if ($min > 0 && $amount < $min) {
-            return back()->withErrors(['error' => "Amount below machine minimum (KES " . number_format($min, 0) . ")."]);
-        }
-        if ($max > 0 && $amount > $max) {
-            return back()->withErrors(['error' => "Amount above machine maximum (KES " . number_format($max, 0) . ")."]);
-        }
+        if ($min > 0 && $amount < $min) return back()->withErrors(['error' => "Amount below machine minimum (KES " . number_format($min, 0) . ")."]);
+        if ($max > 0 && $amount > $max) return back()->withErrors(['error' => "Amount above machine maximum (KES " . number_format($max, 0) . ")."]);
 
-        $wallet = $user->wallet;
-        if ($validated['fund_from'] === 'wallet' && (!$wallet || $wallet->balance < $amount)) {
-            return back()->withErrors(['error' => "User wallet insufficient. Balance: KES " . ($wallet->balance ?? 0)]);
+        if ($validated['fund_from'] === 'wallet' && (!$user->wallet || $user->wallet->balance < $amount)) {
+            return back()->withErrors(['error' => "User wallet insufficient."]);
         }
 
         DB::transaction(function () use ($user, $machine, $amount, $validated) {
-            // Debit wallet if funding from wallet
             if ($validated['fund_from'] === 'wallet') {
                 $user->wallet->debit($amount, 'Machine investment: ' . $machine->name . ' (admin grant)');
             }
 
-            // Create investment with defensive column checks
             $cols = Schema::getColumnListing('machine_investments');
             $data = [
                 'user_id'    => $user->id,
@@ -105,9 +85,7 @@ class AdjustmentController extends Controller
                 'status'     => 'active',
             ];
 
-            if (in_array('vip_level', $cols) && $validated['vip_level']) {
-                $data['vip_level'] = (int) $validated['vip_level'];
-            }
+            if (in_array('vip_level', $cols) && $validated['vip_level']) $data['vip_level'] = (int) $validated['vip_level'];
             if (in_array('started_at', $cols))       $data['started_at']       = now();
             if (in_array('ends_at', $cols))          $data['ends_at']          = now()->addDays($machine->cycle_days ?? 14);
             if (in_array('matures_at', $cols))       $data['matures_at']       = now()->addDays($machine->cycle_days ?? 14);
@@ -118,22 +96,13 @@ class AdjustmentController extends Controller
             $investment = MachineInvestment::create($data);
 
             $this->audit('machine_created', $user, [
-                'machine'      => $machine->name,
-                'machine_code' => $machine->code,
-                'amount'       => $amount,
-                'vip_level'    => $validated['vip_level'] ?? 0,
-                'fund_from'    => $validated['fund_from'],
-                'reason'       => $validated['reason'],
-                'investment_id' => $investment->id,
+                'machine' => $machine->name, 'amount' => $amount, 'reason' => $validated['reason'],
             ]);
         });
 
-        return back()->with('success', "Machine investment created: {$machine->name} · KES " . number_format($amount, 2));
+        return back()->with('success', "Machine investment created: {$machine->name}");
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  MACHINE CANCEL — early withdrawal / termination
-    // ══════════════════════════════════════════════════════════
     public function cancelMachine(Request $request, User $user, $investmentId)
     {
         $validated = $request->validate([
@@ -149,29 +118,16 @@ class AdjustmentController extends Controller
 
         DB::transaction(function () use ($investment, $user, $validated) {
             $investment->update(['status' => 'cancelled']);
-
             $refund = (float) ($validated['refund_amount'] ?? 0);
             if ($refund > 0 && $user->wallet) {
                 $user->wallet->credit($refund, 'Machine cancellation refund: ' . $validated['reason']);
             }
-
-            $this->audit('machine_cancelled', $user, [
-                'investment_id' => $investment->id,
-                'amount'        => $investment->amount,
-                'refund'        => $refund,
-                'reason'        => $validated['reason'],
-            ]);
+            $this->audit('machine_cancelled', $user, ['investment_id' => $investment->id, 'refund' => $refund, 'reason' => $validated['reason']]);
         });
 
-        $refundMsg = ($validated['refund_amount'] ?? 0) > 0
-            ? ' · refunded KES ' . number_format($validated['refund_amount'], 2)
-            : '';
-        return back()->with('success', "Investment cancelled{$refundMsg}");
+        return back()->with('success', "Investment cancelled.");
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  TRADING — credit or debit trading account
-    // ══════════════════════════════════════════════════════════
     public function trading(Request $request, User $user)
     {
         $validated = $request->validate([
@@ -182,37 +138,23 @@ class AdjustmentController extends Controller
 
         $account = $user->tradingAccount;
         if (!$account) {
-            // Auto-create if missing
-            $account = $user->tradingAccount()->create([
-                'balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0, 'total_pnl' => 0,
-            ]);
+            $account = $user->tradingAccount()->create(['balance' => 0, 'locked_balance' => 0, 'btc_balance' => 0, 'total_pnl' => 0]);
         }
 
         $amount = (float) $validated['amount'];
-        $before = (float) $account->balance;
-
-        if ($validated['type'] === 'debit' && $amount > $before) {
-            return back()->withErrors(['error' => "Cannot debit $amount — account has $before."]);
+        if ($validated['type'] === 'debit' && $amount > $account->balance) {
+            return back()->withErrors(['error' => "Cannot debit — insufficient trading balance."]);
         }
 
         DB::transaction(function () use ($account, $validated, $amount, $user) {
             $newBalance = $validated['type'] === 'credit' ? $account->balance + $amount : $account->balance - $amount;
             $account->update(['balance' => $newBalance]);
-
-            $this->audit('trading_' . $validated['type'], $user, [
-                'before' => $account->balance + ($validated['type'] === 'credit' ? -$amount : $amount),
-                'after'  => $newBalance,
-                'amount' => $amount,
-                'reason' => $validated['reason'],
-            ]);
+            $this->audit('trading_' . $validated['type'], $user, ['amount' => $amount, 'reason' => $validated['reason']]);
         });
 
-        return back()->with('success', "Trading account " . $validated['type'] . ": $" . number_format($amount, 2));
+        return back()->with('success', "Trading account adjusted.");
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  LOAN — adjust balance, forgive, or mark as paid
-    // ══════════════════════════════════════════════════════════
     public function loan(Request $request, User $user)
     {
         $validated = $request->validate([
@@ -223,58 +165,24 @@ class AdjustmentController extends Controller
         ]);
 
         $loan = Loan::where('user_id', $user->id)->findOrFail($validated['loan_id']);
-        $before = [
-            'balance' => (float) ($loan->balance ?? 0),
-            'status'  => $loan->status,
-        ];
 
         DB::transaction(function () use ($loan, $validated, $user) {
             switch ($validated['action']) {
-                case 'forgive':
-                    $loan->update(['balance' => 0, 'status' => 'completed']);
-                    break;
-
-                case 'mark_paid':
-                    $loan->update(['status' => 'completed']);
-                    if (isset($loan->balance)) {
-                        $loan->update(['balance' => 0]);
-                    }
-                    break;
-
-                case 'mark_defaulted':
-                    $loan->update(['status' => 'defaulted']);
-                    break;
-
+                case 'forgive': $loan->update(['balance' => 0, 'status' => 'completed']); break;
+                case 'mark_paid': $loan->update(['status' => 'completed', 'balance' => 0]); break;
+                case 'mark_defaulted': $loan->update(['status' => 'defaulted']); break;
                 case 'adjust_balance':
                     $amount = (float) ($validated['amount'] ?? 0);
-                    if ($amount <= 0) {
-                        throw new \RuntimeException('Amount required for adjust_balance.');
-                    }
-                    if ($amount > $loan->balance) {
-                        throw new \RuntimeException('Cannot reduce balance below 0.');
-                    }
+                    if ($amount <= 0 || $amount > $loan->balance) throw new \RuntimeException('Invalid adjust amount.');
                     $loan->update(['balance' => $loan->balance - $amount]);
                     break;
             }
-
-            $this->audit('loan_' . $validated['action'], $user, [
-                'loan_id'        => $loan->id,
-                'action'         => $validated['action'],
-                'amount'         => $validated['amount'] ?? null,
-                'balance_before' => $before['balance'],
-                'balance_after'  => $loan->fresh()->balance,
-                'status_before'  => $before['status'],
-                'status_after'   => $loan->fresh()->status,
-                'reason'         => $validated['reason'],
-            ]);
+            $this->audit('loan_' . $validated['action'], $user, ['loan_id' => $loan->id, 'reason' => $validated['reason']]);
         });
 
-        return back()->with('success', "Loan #{$loan->id} adjusted: {$validated['action']}");
+        return back()->with('success', "Loan adjusted.");
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  LOTTERY — grant free spins or manual wins
-    // ══════════════════════════════════════════════════════════
     public function lottery(Request $request, User $user)
     {
         $validated = $request->validate([
@@ -287,84 +195,42 @@ class AdjustmentController extends Controller
         DB::transaction(function () use ($user, $validated) {
             switch ($validated['action']) {
                 case 'grant_spins':
-                    $spins = (int) $validated['spins'];
-                    $user->increment('free_spins_available', $spins);
-                    $this->audit('lottery_grant_spins', $user, [
-                        'spins' => $spins,
-                        'total_after' => $user->fresh()->free_spins_available,
-                        'reason' => $validated['reason'],
-                    ]);
+                    $user->increment('free_spins_available', (int) $validated['spins']);
                     break;
-
                 case 'grant_win':
                     $winAmount = (float) $validated['win_amount'];
-                    // Create a spin record marked as win
-                    LotterySpin::create([
-                        'user_id'    => $user->id,
-                        'game_id'    => null,
-                        'bet_amount' => 0,
-                        'win_amount' => $winAmount,
-                        'is_win'     => true,
-                    ]);
-                    // Credit wallet
-                    if ($user->wallet) {
-                        $user->wallet->credit($winAmount, 'Lottery win (admin grant): ' . $validated['reason']);
-                    }
-                    $this->audit('lottery_grant_win', $user, [
-                        'win_amount' => $winAmount,
-                        'reason'     => $validated['reason'],
-                    ]);
+                    LotterySpin::create(['user_id' => $user->id, 'game_id' => null, 'bet_amount' => 0, 'win_amount' => $winAmount, 'is_win' => true]);
+                    if ($user->wallet) $user->wallet->credit($winAmount, 'Lottery win (admin grant): ' . $validated['reason']);
                     break;
-
                 case 'reset_stats':
-                    $count = LotterySpin::where('user_id', $user->id)->count();
                     LotterySpin::where('user_id', $user->id)->delete();
-                    $this->audit('lottery_reset_stats', $user, [
-                        'deleted_spins' => $count,
-                        'reason'        => $validated['reason'],
-                    ]);
                     break;
             }
+            $this->audit('lottery_' . $validated['action'], $user, ['reason' => $validated['reason']]);
         });
 
-        return back()->with('success', 'Lottery updated: ' . $validated['action']);
+        return back()->with('success', 'Lottery adjusted.');
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  AUDIT LOGGER
-    // ══════════════════════════════════════════════════════════
     protected function audit(string $action, User $affected, array $payload): void
     {
-        $adminId = auth()->id();
-        $adminEmail = auth()->user()?->email ?? 'system';
-
-        // Always log to file (works even if audit_logs schema differs)
         Log::info('[ADMIN ADJUSTMENT]', [
-            'action'         => $action,
-            'admin_id'       => $adminId,
-            'admin_email'    => $adminEmail,
-            'affected_user'  => $affected->id,
-            'affected_email' => $affected->email,
-            'payload'        => $payload,
-            'ip'             => request()->ip(),
+            'action' => $action, 'admin_id' => auth()->id(), 'admin_email' => auth()->user()?->email,
+            'affected_user' => $affected->id, 'payload' => $payload, 'ip' => request()->ip(),
         ]);
 
-        // Try DB audit_logs with defensive column detection
         try {
-            if (!Schema::hasTable('audit_logs')) return;
-
-            $cols = Schema::getColumnListing('audit_logs');
-            $row = ['action' => $action];
-            if (in_array('user_id', $cols))     $row['user_id']     = $adminId;
-            if (in_array('ip_address', $cols))  $row['ip_address']  = request()->ip();
-            if (in_array('user_agent', $cols))  $row['user_agent']  = request()->userAgent();
-            if (in_array('new_values', $cols))  $row['new_values']  = json_encode($payload);
-            if (in_array('url', $cols))         $row['url']         = request()->fullUrl();
-            if (in_array('affected_user_id', $cols)) $row['affected_user_id'] = $affected->id;
-
-            \DB::table('audit_logs')->insert($row + ['created_at' => now(), 'updated_at' => now()]);
+            if (Schema::hasTable('audit_logs')) {
+                $cols = Schema::getColumnListing('audit_logs');
+                $row = ['action' => $action];
+                if (in_array('user_id', $cols)) $row['user_id'] = auth()->id();
+                if (in_array('ip_address', $cols)) $row['ip_address'] = request()->ip();
+                if (in_array('new_values', $cols)) $row['new_values'] = json_encode($payload);
+                if (in_array('affected_user_id', $cols)) $row['affected_user_id'] = $affected->id;
+                DB::table('audit_logs')->insert($row + ['created_at' => now(), 'updated_at' => now()]);
+            }
         } catch (\Throwable $e) {
-            Log::warning('[ADMIN ADJUSTMENT] audit_logs write failed: ' . $e->getMessage());
+            Log::warning('Audit log failed: ' . $e->getMessage());
         }
     }
 }
