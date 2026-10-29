@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 class SettingsController extends Controller
@@ -18,12 +17,12 @@ class SettingsController extends Controller
         }
 
         $defaults = [
-            'site_name'                 => config('app.name', 'Racksephnox'),
-            'support_email'             => 'support@racksephnox.com',
-            'deposit_fee_percent'       => '0',
-            'withdrawal_fee_percent'    => '0',
-            'min_withdrawal'            => '100',
-            'maintenance_mode'          => '0',
+            'site_name'              => config('app.name', 'Racksephnox'),
+            'support_email'          => 'support@racksephnox.com',
+            'deposit_fee_percent'    => '0',
+            'withdrawal_fee_percent' => '0',
+            'min_withdrawal'         => '100',
+            'maintenance_mode'       => '0',
         ];
 
         foreach ($defaults as $key => $value) {
@@ -33,7 +32,7 @@ class SettingsController extends Controller
         }
 
         $settings = Setting::pluck('value', 'key')->toArray();
-        $stats = $this->getSystemStats();
+        $stats    = $this->getSystemStats();
 
         return view('admin.settings.index', compact('settings', 'stats'));
     }
@@ -41,11 +40,11 @@ class SettingsController extends Controller
     public function update(Request $request)
     {
         $validated = $request->validate([
-            'site_name'                 => 'required|string|max:255',
-            'support_email'             => 'required|email',
-            'deposit_fee_percent'       => 'required|numeric|min:0|max:100',
-            'withdrawal_fee_percent'    => 'required|numeric|min:0|max:100',
-            'min_withdrawal'            => 'required|numeric|min:1',
+            'site_name'              => 'required|string|max:255',
+            'support_email'          => 'required|email',
+            'deposit_fee_percent'    => 'required|numeric|min:0|max:100',
+            'withdrawal_fee_percent' => 'required|numeric|min:0|max:100',
+            'min_withdrawal'         => 'required|numeric|min:1',
         ]);
 
         foreach ($validated as $key => $value) {
@@ -57,22 +56,27 @@ class SettingsController extends Controller
 
     public function clearCache()
     {
-        // Targeted clears — do NOT nuke the app cache (would flush admin dashboard HTML cache)
+        // Targeted clears — do NOT nuke the app cache (would flush dashboard HTML cache)
         Artisan::call('config:clear');
         Artisan::call('route:clear');
         Artisan::call('view:clear');
+
         return back()->with('success', 'Config, route, and view caches cleared. Application cache preserved.');
     }
 
     public function toggleMaintenance(Request $request)
     {
         $currentMode = Setting::get('maintenance_mode', '0');
-        $newMode = $currentMode === '1' ? '0' : '1';
+        $newMode     = $currentMode === '1' ? '0' : '1';
         Setting::set('maintenance_mode', $newMode, 'boolean');
 
         if ($newMode === '1') {
             Artisan::call('down', ['--secret' => 'racksephnox-admin']);
-            return back()->with('success', 'Maintenance mode ENABLED. Bypass URL: /racksephnox-admin — SAVE THIS. No shell on Render free tier.');
+            return back()->with(
+                'success',
+                'Maintenance mode ENABLED. Bypass URL: /racksephnox-admin — SAVE THIS. ' .
+                'Without it, only a shell (php artisan up) can restore the site.'
+            )->with('maintenance_bypass', url('/racksephnox-admin'));
         }
 
         Artisan::call('up');
@@ -81,14 +85,16 @@ class SettingsController extends Controller
 
     protected function getSystemStats(): array
     {
+        $safe = fn($v) => is_scalar($v) || $v === null ? (string) ($v ?? '') : json_encode($v);
+
         return [
-            'php_version'    => PHP_VERSION,
+            'php_version'     => PHP_VERSION,
             'laravel_version' => app()->version(),
-            'app_env'        => app()->environment(),
-            'debug_mode'     => config('app.debug') ? 'ON' : 'OFF',
-            'cache_driver'   => config('cache.default'),
-            'queue_driver'   => config('queue.default'),
-            'db_driver'      => config('database.default'),
+            'app_env'         => $safe(config('app.env')),
+            'debug_mode'      => config('app.debug') ? 'ON' : 'OFF',
+            'cache_driver'    => $safe(config('cache.default')),
+            'queue_driver'    => $safe(config('queue.default')),
+            'db_driver'       => $safe(config('database.default')),
         ];
     }
 }

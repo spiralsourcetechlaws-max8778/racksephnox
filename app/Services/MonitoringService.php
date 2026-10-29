@@ -2,9 +2,10 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MonitoringService
 {
@@ -17,6 +18,7 @@ class MonitoringService
             'storage'   => $this->checkStorage(),
             'config'    => $this->checkConfig(),
             'scheduler' => $this->checkScheduler(),
+            'migrations'=> $this->checkMigrations(),
         ];
     }
 
@@ -27,15 +29,12 @@ class MonitoringService
             DB::connection()->getPdo();
             $ms = (int) round((microtime(true) - $start) * 1000);
 
-            $users = DB::table('users')->count();
-            $migrations = DB::table('migrations')->count();
-
             return [
                 'status'      => $ms > 500 ? 'warning' : 'ok',
                 'driver'      => DB::connection()->getDriverName(),
                 'latency_ms'  => $ms,
-                'users_count' => $users,
-                'migrations'  => $migrations,
+                'users_count' => Schema::hasTable('users') ? DB::table('users')->count() : 0,
+                'migrations'  => Schema::hasTable('migrations') ? DB::table('migrations')->count() : 0,
             ];
         } catch (\Throwable $e) {
             return ['status' => 'error', 'message' => $e->getMessage()];
@@ -45,17 +44,16 @@ class MonitoringService
     protected function checkCache(): array
     {
         try {
-            $key = 'monitor_probe_' . uniqid();
+            $key = 'monitor_probe_' . uniqid('', true);
             $start = microtime(true);
             Cache::put($key, 'ok', 5);
             $ok = Cache::get($key) === 'ok';
             Cache::forget($key);
-            $ms = (int) round((microtime(true) - $start) * 1000);
 
             return [
-                'status' => $ok ? 'ok' : 'error',
-                'driver' => config('cache.default'),
-                'latency_ms' => $ms,
+                'status'     => $ok ? 'ok' : 'error',
+                'driver'     => (string) config('cache.default'),
+                'latency_ms' => (int) round((microtime(true) - $start) * 1000),
             ];
         } catch (\Throwable $e) {
             return ['status' => 'error', 'message' => $e->getMessage()];
@@ -66,19 +64,20 @@ class MonitoringService
     {
         try {
             $pending = 0;
-            $failed = 0;
-            if (\Schema::hasTable('jobs')) {
+            $failed  = 0;
+
+            if (Schema::hasTable('jobs')) {
                 $pending = DB::table('jobs')->count();
             }
-            if (\Schema::hasTable('failed_jobs')) {
+            if (Schema::hasTable('failed_jobs')) {
                 $failed = DB::table('failed_jobs')->count();
             }
 
             return [
-                'status'   => $failed > 50 ? 'warning' : 'ok',
-                'driver'   => config('queue.default'),
-                'pending'  => $pending,
-                'failed'   => $failed,
+                'status'  => $failed > 50 ? 'warning' : 'ok',
+                'driver'  => (string) config('queue.default'),
+                'pending' => $pending,
+                'failed'  => $failed,
             ];
         } catch (\Throwable $e) {
             return ['status' => 'warning', 'message' => 'Queue status unavailable'];
@@ -89,13 +88,12 @@ class MonitoringService
     {
         try {
             $path = storage_path();
-            $writable = is_writable($path);
-            $free = function_exists('disk_free_space') ? disk_free_space($path) : null;
+            $free = function_exists('disk_free_space') ? @disk_free_space($path) : null;
 
             return [
-                'status'      => $writable ? 'ok' : 'error',
-                'writable'    => $writable,
-                'free_gb'     => $free ? round($free / 1073741824, 2) : null,
+                'status'   => is_writable($path) ? 'ok' : 'error',
+                'writable' => is_writable($path),
+                'free_gb'  => $free ? round($free / 1073741824, 2) : null,
             ];
         } catch (\Throwable $e) {
             return ['status' => 'error', 'message' => $e->getMessage()];
@@ -105,13 +103,13 @@ class MonitoringService
     protected function checkConfig(): array
     {
         return [
-            'status'          => config('app.debug') ? 'warning' : 'ok',
-            'app_env'         => config('app.env'),
-            'debug'           => config('app.debug'),
-            'app_url'         => config('app.url'),
-            'timezone'        => config('app.timezone'),
-            'config_cached'   => file_exists(base_path('bootstrap/cache/config.php')),
-            'routes_cached'   => file_exists(base_path('bootstrap/cache/routes-v7.php')),
+            'status'        => config('app.debug') ? 'warning' : 'ok',
+            'app_env'       => (string) config('app.env'),
+            'debug'         => (bool) config('app.debug'),
+            'app_url'       => (string) config('app.url'),
+            'timezone'      => (string) config('app.timezone'),
+            'config_cached' => file_exists(base_path('bootstrap/cache/config.php')),
+            'routes_cached' => file_exists(base_path('bootstrap/cache/routes-v7.php')),
         ];
     }
 
@@ -119,15 +117,33 @@ class MonitoringService
     {
         try {
             $lastRun = Cache::get('scheduler.heartbeat');
-            $healthy = $lastRun && now()->diffInMinutes($lastRun) < 10;
+            $healthy = $lastRun && now()->diffInMinutes(\Carbon\Carbon::parse($lastRun)) < 10;
 
             return [
-                'status'    => $healthy ? 'ok' : 'warning',
-                'last_run'  => $lastRun,
-                'healthy'   => $healthy,
+                'status'   => $healthy ? 'ok' : 'warning',
+                'last_run' => $lastRun,
+                'healthy'  => $healthy,
             ];
         } catch (\Throwable $e) {
             return ['status' => 'warning', 'message' => $e->getMessage()];
+        }
+    }
+
+    protected function checkMigrations(): array
+    {
+        try {
+            // Cache for 5 minutes to prevent migrate:status from slowing down every page load
+            return Cache::remember('monitoring.pending_migrations', 300, function () {
+                Artisan::call('migrate:status');
+                $output = Artisan::output();
+                $pending = substr_count($output, 'Pending');
+                return [
+                    'status'  => $pending > 0 ? 'warning' : 'ok',
+                    'pending' => $pending,
+                ];
+            });
+        } catch (\Throwable $e) {
+            return ['status' => 'warning', 'pending' => 0];
         }
     }
 
@@ -135,9 +151,23 @@ class MonitoringService
     {
         try {
             $logFile = storage_path('logs/laravel.log');
-            if (!file_exists($logFile)) return [];
+            if (!file_exists($logFile) || !is_readable($logFile)) {
+                return [];
+            }
 
-            $lines = array_slice(file($logFile), -500);
+            // Read only the last 1MB to avoid memory exhaustion on large log files
+            $handle = fopen($logFile, 'r');
+            if (!$handle) return [];
+
+            $content = '';
+            fseek($handle, -1, SEEK_END);
+            $size = ftell($handle);
+            $readFrom = max(0, $size - 1024 * 1024);
+            fseek($handle, $readFrom);
+            $content = fread($handle, 1024 * 1024);
+            fclose($handle);
+
+            $lines = explode("\n", $content);
             $errors = [];
             foreach ($lines as $line) {
                 if (stripos($line, '.ERROR') !== false || stripos($line, 'production.ERROR') !== false) {

@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\MonitoringService;
-use Illuminate\Support\Facades\Artisan;
 
 class MonitoringController extends Controller
 {
@@ -12,22 +11,12 @@ class MonitoringController extends Controller
 
     public function index()
     {
-        $checks = $this->monitoring->check();
-        $errors = $this->monitoring->getRecentErrors(20);
-        $pendingMigrations = $this->countPendingMigrations();
-        $overall = $this->calculateOverall($checks);
+        $checks            = $this->monitoring->check();
+        $errors            = $this->monitoring->getRecentErrors(20);
+        $pendingMigrations = $checks['migrations']['pending'] ?? 0;
+        $overall           = $this->calculateOverall($checks);
 
         return view('admin.monitoring', compact('checks', 'errors', 'pendingMigrations', 'overall'));
-    }
-
-    protected function countPendingMigrations(): int
-    {
-        try {
-            Artisan::call('migrate:status');
-            return substr_count(Artisan::output(), 'Pending');
-        } catch (\Throwable $e) {
-            return 0;
-        }
     }
 
     protected function calculateOverall(array $checks): string
