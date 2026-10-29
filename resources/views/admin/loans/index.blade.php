@@ -1,3 +1,4 @@
+<?php $errors = $errors ?? new \Illuminate\Support\ViewErrorBag(); ?>
 @extends('admin.layouts.app')
 
 @section('page-title', 'Loans')
