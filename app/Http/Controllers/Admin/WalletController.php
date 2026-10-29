@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\AuditLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class WalletController extends Controller
 {
@@ -14,41 +15,39 @@ class WalletController extends Controller
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|not_in:0',
-            'type' => 'required|in:credit,debit',
+            'type'   => 'required|in:credit,debit',
             'reason' => 'required|string|max:255',
         ]);
 
         $wallet = $user->wallet;
-        
-        if (!$wallet) {
-            return back()->withErrors(['error' => 'User does not have a wallet.']);
-        }
+        if (!$wallet) return back()->withErrors(['error' => 'User does not have a wallet.']);
 
         $amount = abs($validated['amount']);
         $description = 'Admin Adjustment (' . ucfirst($validated['type']) . '): ' . $validated['reason'];
 
-        // Perform the transaction
-        if ($validated['type'] === 'credit') {
-            $wallet->credit($amount, $description);
-        } else {
-            if ($wallet->balance < $amount) {
-                return back()->withErrors(['error' => 'Insufficient user balance for this debit.']);
-            }
-            $wallet->debit($amount, $description);
-        }
-
-        // Commercial Standard: Audit Logging
         try {
-            AuditLog::create([
-                'user_id' => $user->id,
-                'admin_id' => auth()->id(),
-                'action' => 'wallet_adjustment',
-                'details' => $description . ' | Amount: KES ' . number_format($amount, 2),
-                'ip_address' => $request->ip(),
-            ]);
-        } catch (\Exception $e) {
-            // Fallback to standard log if AuditLog table has schema issues
-            Log::warning('AuditLog failed: ' . $e->getMessage());
+            if ($validated['type'] === 'credit') {
+                $wallet->credit($amount, $description);
+            } else {
+                $wallet->debit($amount, $description);
+            }
+
+            // Defensive Audit Log
+            if (Schema::hasTable('audit_logs')) {
+                $cols = Schema::getColumnListing('audit_logs');
+                $row = [
+                    'action' => 'wallet_adjustment',
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ];
+                if (in_array('user_id', $cols)) $row['user_id'] = auth()->id();
+                if (in_array('ip_address', $cols)) $row['ip_address'] = $request->ip();
+                if (in_array('new_values', $cols)) $row['new_values'] = json_encode(['target_user' => $user->id, 'amount' => $amount, 'type' => $validated['type'], 'reason' => $validated['reason']]);
+                DB::table('audit_logs')->insert($row);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Wallet adjustment failed: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Transaction failed: ' . $e->getMessage()]);
         }
 
         return back()->with('success', 'Wallet adjusted successfully by KES ' . number_format($amount, 2));
