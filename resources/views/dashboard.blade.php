@@ -56,7 +56,7 @@
 
     {{-- MID SECTION --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {{-- RECENT TRANSACTIONS --}}
         <div class="card-golden p-5 lg:col-span-2">
             <div class="flex justify-between items-center mb-4">
