@@ -14,7 +14,8 @@ class MachineInvestment extends Model
         'vip_level', 'daily_profit', 'total_projected_profit', 'start_date',
         'end_date', 'last_accrued_at', 'withdrawn', 'early_withdrawn',
         'penalty_applied', 'started_at', 'ends_at', 'matures_at',
-        'returns_earned', 'total_returns', 'expected_return'
+        'returns_earned', 'total_returns', 'expected_return',
+        'total_return', 'return_earned' // Add all singular/plural variants
     ];
 
     protected $casts = [
@@ -29,6 +30,7 @@ class MachineInvestment extends Model
         'ends_at' => 'datetime',
         'matures_at' => 'datetime',
         'expected_return' => 'float',
+        'total_return' => 'float',
     ];
 
     public function user() { return $this->belongsTo(User::class); }

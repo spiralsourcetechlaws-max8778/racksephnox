@@ -100,8 +100,12 @@ class AdjustmentController extends Controller
                     'started_at'             => now(),
                     'ends_at'                => now()->addDays($days),
                     'matures_at'             => now()->addDays($days),
+                    
+                    // THE EXACT REQUIRED COLUMNS
+                    'total_return'           => 0,
+                    'total_returns'          => 0, 
                     'returns_earned'         => 0,
-                    'total_returns'          => 0,
+                    'return_earned'          => 0,
                     'expected_return'        => $totalProjected,
                 ];
 
