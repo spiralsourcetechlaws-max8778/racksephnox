@@ -16,7 +16,7 @@
     $initialIsAdmin = old('is_admin', $user->is_admin) ? 'true' : 'false';
 @endphp
 
-<div class="max-w-4xl mx-auto space-y-4 pb-32">
+<div class="max-w-4xl mx-auto space-y-4 pb-32" x-data="{ submitting: false }">
 
     <div class="flex justify-between items-center">
         <h1 class="text-2xl font-bold text-white">Edit: {{ $user->name }}</h1>
@@ -34,7 +34,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('admin.users.update', $user) }}" id="edit-user-form">
+    <form method="POST" action="{{ route('admin.users.update', $user) }}" id="edit-user-form" @submit="submitting = true">
         @csrf
         @method('PATCH')
 
@@ -44,15 +44,18 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Full Name *</label>
-                    <input type="text" name="name" value="{{ old('name', $user->name) }}" required class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    <input type="text" name="name" value="{{ old('name', $user->name) }}" required class="w-full bg-gray-800 border @error('name') border-red-500 @else border-gray-700 @enderror text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    @error('name') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Email *</label>
-                    <input type="email" name="email" value="{{ old('email', $user->email) }}" required class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    <input type="email" name="email" value="{{ old('email', $user->email) }}" required class="w-full bg-gray-800 border @error('email') border-red-500 @else border-gray-700 @enderror text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    @error('email') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Phone</label>
-                    <input type="text" name="phone" value="{{ old('phone', $user->phone) }}" placeholder="2547XXXXXXXX" class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    <input type="text" name="phone" value="{{ old('phone', $user->phone) }}" placeholder="2547XXXXXXXX" class="w-full bg-gray-800 border @error('phone') border-red-500 @else border-gray-700 @enderror text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    @error('phone') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Referral Code</label>
@@ -68,7 +71,8 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">New Password (min 8)</label>
-                    <input type="password" name="password" autocomplete="new-password" placeholder="Leave blank to keep current" class="w-full bg-gray-800 border border-gray-700 text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    <input type="password" name="password" autocomplete="new-password" placeholder="Leave blank to keep current" class="w-full bg-gray-800 border @error('password') border-red-500 @else border-gray-700 @enderror text-white rounded px-3 py-2 focus:border-gold focus:outline-none">
+                    @error('password') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Confirm New Password</label>
@@ -77,9 +81,10 @@
             </div>
         </div>
 
-        {{-- ACCOUNT STATUS (Tailwind Toggles) --}}
+        {{-- ACCOUNT STATUS & SECURITY --}}
         <div class="admin-card p-6 space-y-4 mt-4">
-            <h2 class="text-lg font-semibold text-gold pb-2 border-b border-gray-800">Account Status</h2>
+            <h2 class="text-lg font-semibold text-gold pb-2 border-b border-gray-800">Account Status & Security</h2>
+            
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">KYC Status</label>
@@ -99,39 +104,50 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-800/50">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-800/50">
+                {{-- Email Verified --}}
                 <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : '' }}">
                     <div>
                         <p class="text-sm font-medium text-white">Email Verified</p>
-                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked' : 'Skip verification step' }}</p>
+                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked' : 'Skip verification' }}</p>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        @if(!$isSelf)
-                            <input type="hidden" name="is_verified" value="0">
-                        @endif
+                        @if(!$isSelf) <input type="hidden" name="is_verified" value="0"> @endif
                         <input type="checkbox" name="is_verified" value="1" class="sr-only peer" {{ old('is_verified', $user->is_verified) ? 'checked' : '' }} {{ $isSelf ? 'disabled' : '' }}>
                         <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
                     </label>
                 </div>
 
+                {{-- Active Account --}}
                 <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded {{ $isSelf ? 'opacity-60' : '' }}">
                     <div>
                         <p class="text-sm font-medium text-white">Active Account</p>
-                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked' : 'Unchecked = login blocked' }}</p>
+                        <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked' : 'Unchecked = blocked' }}</p>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        @if(!$isSelf)
-                            <input type="hidden" name="is_active" value="0">
-                        @endif
+                        @if(!$isSelf) <input type="hidden" name="is_active" value="0"> @endif
                         <input type="checkbox" name="is_active" value="1" class="sr-only peer" {{ old('is_active', $user->is_active ?? true) ? 'checked' : '' }} {{ $isSelf ? 'disabled' : '' }}>
                         <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                </div>
+
+                {{-- Reset 2FA (NEW) --}}
+                <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded">
+                    <div>
+                        <p class="text-sm font-medium text-white">Force 2FA Reset</p>
+                        <p class="text-xs text-gray-400">Clears two_factor_*</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="hidden" name="reset_2fa" value="0">
+                        <input type="checkbox" name="reset_2fa" value="1" class="sr-only peer" {{ old('reset_2fa') ? 'checked' : '' }}>
+                        <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
                     </label>
                 </div>
             </div>
         </div>
 
         @if($isSuper)
-            {{-- ADMIN PRIVILEGES (Alpine Toggle) --}}
+            {{-- ADMIN PRIVILEGES --}}
             <div class="admin-card p-6 space-y-4 mt-4 border-l-4 border-l-red-500" x-data="{ isAdmin: {{ $initialIsAdmin }} }">
                 <h2 class="text-lg font-semibold text-red-400 pb-2 border-b border-gray-800">Admin Privileges</h2>
                 
@@ -141,9 +157,7 @@
                         <p class="text-xs text-gray-400">{{ $isSelf ? 'Locked - cannot remove own access' : 'Grants access to /admin panel' }}</p>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        @if(!$isSelf)
-                            <input type="hidden" name="is_admin" value="0">
-                        @endif
+                        @if(!$isSelf) <input type="hidden" name="is_admin" value="0"> @endif
                         <input type="checkbox" name="is_admin" value="1" x-model="isAdmin" class="sr-only peer" {{ $isSelf ? 'disabled' : '' }}>
                         <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-500"></div>
                     </label>
@@ -156,15 +170,16 @@
                         <option value="finance" {{ old('admin_role', $user->admin_role) === 'finance' ? 'selected' : '' }}>Finance Admin - Money movement</option>
                         <option value="support" {{ old('admin_role', $user->admin_role) === 'support' ? 'selected' : '' }}>Support Admin - Users & KYC</option>
                     </select>
+                    @error('admin_role') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
                     @if($isSelf)
                         <p class="text-xs text-yellow-400 mt-1">Your role is locked to prevent self-lockout</p>
                     @endif
                 </div>
             </div>
 
-            {{-- USER PRIVILEGES (Tailwind Toggles) --}}
+            {{-- USER PRIVILEGES --}}
             <div class="admin-card p-6 space-y-4 mt-4 border-l-4 border-l-yellow-500">
-                <h2 class="text-lg font-semibold text-yellow-400 pb-2 border-b border-gray-800">User Privileges</h2>
+                <h2 class="text-lg font-semibold text-yellow-400 pb-2 border-b border-gray-800">User Privileges & Features</h2>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded">
@@ -196,16 +211,38 @@
                             <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
                         </label>
                     </div>
+
+                    {{-- Onboarding Toggle (NEW) --}}
+                    <div class="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded">
+                        <div>
+                            <p class="text-sm font-medium text-white">Onboarding Complete</p>
+                            <p class="text-xs text-gray-400">Bypass wizard</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="hidden" name="onboarding_completed" value="0">
+                            <input type="checkbox" name="onboarding_completed" value="1" class="sr-only peer" {{ old('onboarding_completed', $user->onboarding_completed) ? 'checked' : '' }}>
+                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                        </label>
+                    </div>
+
+                    {{-- Free Spins Input (NEW) --}}
+                    <div class="p-3 bg-gray-800/50 border border-gray-700 rounded">
+                        <label class="block text-sm font-medium text-white mb-1">Free Lottery Spins</label>
+                        <input type="number" name="free_spins_available" value="{{ old('free_spins_available', $user->free_spins_available ?? 0) }}" min="0" class="w-full bg-gray-900 border border-gray-700 text-white rounded px-3 py-1 text-sm">
+                        @error('free_spins_available') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
                 </div>
             </div>
         @endif
 
-        {{-- FIXED STICKY SAVE BAR --}}
+        {{-- FIXED STICKY SAVE BAR with LOADING STATE --}}
         <div class="fixed bottom-0 left-0 right-0 z-40 bg-gray-950 border-t-2 border-gold shadow-2xl p-4">
             <div class="max-w-4xl mx-auto flex justify-between items-center gap-3">
                 <a href="{{ route('admin.users.show', $user) }}" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded">Cancel</a>
-                <button type="submit" form="edit-user-form" class="px-8 py-3 bg-gold hover:bg-yellow-500 text-black font-bold rounded text-base shadow-lg transition">
-                    <i class="fas fa-save mr-1"></i> Save All Changes
+                <button type="submit" form="edit-user-form" :disabled="submitting" class="px-8 py-3 bg-gold hover:bg-yellow-500 text-black font-bold rounded text-base shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                    <svg x-show="submitting" class="animate-spin h-5 w-5 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span x-show="!submitting"><i class="fas fa-save mr-1"></i> Save All Changes</span>
+                    <span x-show="submitting">Saving...</span>
                 </button>
             </div>
         </div>

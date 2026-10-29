@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class UserController extends Controller
 {
@@ -29,10 +29,7 @@ class UserController extends Controller
         return view('admin.users.index', compact('users'));
     }
 
-    public function create()
-    {
-        return view('admin.users.create');
-    }
+    public function create() { return view('admin.users.create'); }
 
     public function store(Request $request)
     {
@@ -68,9 +65,7 @@ class UserController extends Controller
 
     public function show(User $user)
     {
-        // Dynamically load only relations whose tables actually exist.
         $relations = ['wallet'];
-        
         if (Schema::hasTable('machine_investments')) $relations[] = 'machineInvestments.machine';
         if (Schema::hasTable('trading_accounts')) $relations[] = 'tradingAccount';
         if (Schema::hasTable('transactions')) $relations['transactions'] = fn($q) => $q->latest()->limit(10);
@@ -80,13 +75,8 @@ class UserController extends Controller
         if (Schema::hasTable('lottery_spins')) $relations[] = 'lotterySpins';
         if (Schema::hasTable('loan_credit_scores')) $relations[] = 'loanCreditScore';
 
-        try {
-            $user->load($relations);
-        } catch (\Throwable $e) {
-            \Log::warning('User show relation load failed: ' . $e->getMessage());
-        }
+        try { $user->load($relations); } catch (\Throwable $e) {}
 
-        // Safe defaults for all stats
         $stats = [
             'wallet_balance' => (float) ($user->wallet?->balance ?? 0),
             'total_deposited' => (float) ($user->depositRequests ?? collect())->whereIn('status', ['approved', 'completed'])->sum('amount'),
@@ -106,14 +96,12 @@ class UserController extends Controller
         return view('admin.users.show', compact('user', 'stats'));
     }
 
-    public function edit(User $user)
-    {
-        return view('admin.users.edit', compact('user'));
-    }
+    public function edit(User $user) { return view('admin.users.edit', compact('user')); }
 
     public function update(Request $request, User $user)
     {
         $isSelf = $user->id === auth()->id();
+        
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
@@ -122,14 +110,15 @@ class UserController extends Controller
             'kyc_status' => 'nullable|in:pending,verified,rejected',
             'kyc_level' => 'nullable|in:basic,tier1,tier2',
             'admin_role' => 'nullable|in:user,super_admin,finance,support',
+            'free_spins_available' => 'nullable|integer|min:0',
         ]);
 
         $newIsAdmin = $request->has('is_admin') ? $request->boolean('is_admin') : (bool) $user->is_admin;
         $newAdminRole = $request->has('admin_role') ? $request->input('admin_role') : $user->admin_role;
 
         if ($isSelf) {
-            if (!$newIsAdmin) return back()->withErrors(['error' => 'Cannot remove your own admin access.']);
-            if ($newAdminRole !== 'super_admin' && $user->admin_role === 'super_admin') return back()->withErrors(['error' => 'Cannot demote yourself.']);
+            if (!$newIsAdmin) return back()->withErrors(['error' => 'Cannot remove your own admin access.'])->withInput();
+            if ($newAdminRole !== 'super_admin' && $user->admin_role === 'super_admin') return back()->withErrors(['error' => 'Cannot demote yourself.'])->withInput();
         }
 
         if ($request->has('is_admin') && !$request->boolean('is_admin')) {
@@ -152,15 +141,27 @@ class UserController extends Controller
             'is_active' => $request->has('is_active') ? $request->boolean('is_active') : $user->is_active,
             'is_vip' => $request->has('is_vip') ? $request->boolean('is_vip') : $user->is_vip,
             'has_promo' => $request->has('has_promo') ? $request->boolean('has_promo') : $user->has_promo,
+            'onboarding_completed' => $request->has('onboarding_completed') ? $request->boolean('onboarding_completed') : $user->onboarding_completed,
+            'free_spins_available' => $request->has('free_spins_available') ? (int) $validated['free_spins_available'] : $user->free_spins_available,
         ];
-        
+
+        if ($request->has('reset_2fa') && $request->boolean('reset_2fa')) {
+            $data['two_factor_secret'] = null;
+            $data['two_factor_recovery_codes'] = null;
+            $data['two_factor_confirmed_at'] = null;
+        }
+
         if (!empty($validated['password'])) $data['password'] = Hash::make($validated['password']);
+        
         if ($data['is_verified'] && !$user->email_verified_at) $data['email_verified_at'] = now();
         if (!$data['is_verified']) $data['email_verified_at'] = null;
 
+        if ($data['has_promo'] && !$user->has_promo) $data['promo_expires_at'] = now()->addDays(7);
+        if (!$data['has_promo']) $data['promo_expires_at'] = null;
+
         try {
-            $user->update($data);
-            return redirect()->route('admin.users.show', $user)->with('success', 'Changes saved.');
+            DB::transaction(fn() => $user->update($data));
+            return redirect()->route('admin.users.show', $user)->with('success', 'All changes saved successfully.');
         } catch (\Throwable $e) {
             return back()->withErrors(['error' => 'Failed to update user: ' . $e->getMessage()])->withInput();
         }
@@ -169,19 +170,12 @@ class UserController extends Controller
     public function destroy(User $user)
     {
         if ($user->id === auth()->id()) return back()->withErrors(['error' => 'Cannot delete yourself.']);
-        
-        DB::beginTransaction();
         try {
-            // Optional: Manually delete relationships if cascade isn't set up in DB
-            // but for safety, we just wrap in a try-catch.
             $email = $user->email;
             $user->delete();
-            DB::commit();
             return redirect()->route('admin.users.index')->with('success', "User {$email} deleted.");
         } catch (\Throwable $e) {
-            DB::rollBack();
-            \Log::error('User delete failed: ' . $e->getMessage());
-            return back()->withErrors(['error' => 'Cannot delete user. They may have active financial records (wallets, loans, transactions). You should deactivate them instead.']);
+            return back()->withErrors(['error' => 'Cannot delete user. They may have active financial records.']);
         }
     }
 
@@ -189,28 +183,19 @@ class UserController extends Controller
     {
         if ($user->id === auth()->id()) return back()->withErrors(['error' => 'Cannot change own role.']);
         $validated = $request->validate(['role' => 'required|in:user,super_admin,finance,support']);
-        
         try {
-            $user->is_admin = $validated['role'] !== 'user';
-            $user->admin_role = $user->is_admin ? $validated['role'] : null;
-            $user->save();
+            $user->update(['is_admin' => $validated['role'] !== 'user', 'admin_role' => $validated['role'] !== 'user' ? $validated['role'] : null]);
             return back()->with('success', "Role updated.");
-        } catch (\Throwable $e) {
-            return back()->withErrors(['error' => 'Failed to update role: ' . $e->getMessage()]);
-        }
+        } catch (\Throwable $e) { return back()->withErrors(['error' => $e->getMessage()]); }
     }
 
     public function toggleAdmin(User $user)
     {
         if ($user->id === auth()->id() && $user->is_admin) return back()->withErrors(['error' => 'Cannot demote yourself.']);
         try {
-            $user->is_admin = !$user->is_admin;
-            $user->admin_role = $user->is_admin ? ($user->admin_role ?? 'super_admin') : null;
-            $user->save();
+            $user->update(['is_admin' => !$user->is_admin, 'admin_role' => !$user->is_admin ? ($user->admin_role ?? 'super_admin') : null]);
             return back()->with('success', "Role updated.");
-        } catch (\Throwable $e) {
-            return back()->withErrors(['error' => 'Failed to toggle admin: ' . $e->getMessage()]);
-        }
+        } catch (\Throwable $e) { return back()->withErrors(['error' => $e->getMessage()]); }
     }
 
     public function toggleVip(User $user) { try { $user->update(['is_vip' => !$user->is_vip]); return back()->with('success', 'VIP toggled.'); } catch (\Throwable $e) { return back()->withErrors(['error' => $e->getMessage()]); } }
