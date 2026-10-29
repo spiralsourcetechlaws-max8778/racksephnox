@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('page-title', 'Admin') · {{ config('app.name', 'Racksephnox') }}</title>
-
+    
     @php
         $manifestExists = file_exists(public_path('build/manifest.json'));
         $hotExists      = file_exists(public_path('hot'));
@@ -35,7 +35,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<?php $errors = $errors ?? new \Illuminate\Support\ViewErrorBag(); ?>
+@php
+    // Bulletproof error handling: Ensure $errors is ALWAYS a ViewErrorBag,
+    // even if a controller accidentally passes an array (like $logErrors).
+    if (!($errors instanceof \Illuminate\Support\ViewErrorBag)) {
+        $errors = new \Illuminate\Support\ViewErrorBag();
+    }
+@endphp
 <body class="bg-gray-900 text-gray-300 font-sans antialiased" x-data="{ sidebarOpen: false, userMenuOpen: false, clock: '' }" x-init="setInterval(() => clock = new Date().toLocaleTimeString(), 1000)">
     <div class="flex h-screen overflow-hidden">
 
