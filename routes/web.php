@@ -60,7 +60,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/kyc', [KycController::class, 'index'])->name('kyc');
     Route::post('/kyc/upload', [KycController::class, 'upload'])->name('kyc.upload');
 
-    // Trading — specific routes before any wildcard
+    // Trading
     Route::prefix('trading')->name('trading.')->group(function () {
         Route::get('/', [TradingController::class, 'index'])->name('index');
         Route::get('/price', [TradingController::class, 'price'])->name('price');
@@ -74,17 +74,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/transfer/out', [TradingController::class, 'transferFromTrading'])->name('transfer.out');
     });
 
-    // Social Trading
+    // Social Trading — specific routes BEFORE wildcards
     Route::prefix('social-trading')->name('social-trading.')->group(function () {
         Route::get('/leaderboard', [App\Http\Controllers\SocialTradingController::class, 'leaderboard'])->name('leaderboard');
-        Route::get('/profile/{username}', [App\Http\Controllers\SocialTradingController::class, 'traderProfile'])->name('profile');
+        Route::get('/followed', [App\Http\Controllers\SocialTradingController::class, 'followed'])->name('followed');
+        Route::get('/copy-history', [App\Http\Controllers\SocialTradingController::class, 'copyHistory'])->name('copy-history');
         Route::get('/profile/edit', [App\Http\Controllers\SocialTradingController::class, 'editProfile'])->name('profile.edit');
         Route::post('/profile/update', [App\Http\Controllers\SocialTradingController::class, 'updateProfile'])->name('profile.update');
         Route::post('/follow/{trader}', [App\Http\Controllers\SocialTradingController::class, 'follow'])->name('follow');
         Route::delete('/unfollow/{trader}', [App\Http\Controllers\SocialTradingController::class, 'unfollow'])->name('unfollow');
-        Route::get('/followed', [App\Http\Controllers\SocialTradingController::class, 'followed'])->name('followed');
         Route::post('/settings/{trader}', [App\Http\Controllers\SocialTradingController::class, 'updateSettings'])->name('settings.update');
-        Route::get('/copy-history', [App\Http\Controllers\SocialTradingController::class, 'copyHistory'])->name('copy-history');
+        Route::get('/profile/{username}', [App\Http\Controllers\SocialTradingController::class, 'traderProfile'])->name('profile');
     });
 
     // Referrals
@@ -131,7 +131,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{loan}/cancel', [App\Http\Controllers\LoanController::class, 'cancel'])->name('cancel');
     });
 
-    // Machines — specific routes before {code} wildcard
+    // Machines
     Route::prefix('machines')->name('machines.')->group(function () {
         Route::get('/', [MachineController::class, 'index'])->name('index');
         Route::get('/my-investments', [MachineController::class, 'myInvestments'])->name('my-investments');

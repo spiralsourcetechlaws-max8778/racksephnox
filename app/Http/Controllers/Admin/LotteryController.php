@@ -326,6 +326,12 @@ class LotteryController extends Controller
      *
      * Wrapped in DB::transaction — either all rows update or none do.
      */
+    
+    public function editSymbol(LotterySymbol $symbol)
+    {
+        return view('admin.lottery.symbol-edit', compact('symbol'));
+    }
+
     public function updateSymbols(Request $request)
     {
         $payload = $request->input('symbols', []);
