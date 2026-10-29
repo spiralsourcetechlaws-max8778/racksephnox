@@ -189,18 +189,8 @@ class SocialTradingController extends Controller
     /**
      * Get copy trading history
      */
-    public function copyHistory()
-    {
-        $copiedTrades = CopyTrade::where('follower_id', Auth::id())
-            ->with('originalOrder', 'trader')
-            ->latest()
-            ->paginate(20);
-
-        $tradesCopiedToMe = CopyTrade::where('trader_id', Auth::id())
-            ->with('follower')
-            ->latest()
-            ->paginate(20);
-
-        return view('social-trading.history', compact('copiedTrades', 'tradesCopiedToMe'));
+    public function copyHistory() {
+        $history = \App\Models\CopyTrade::where("follower_id", auth()->id())->latest()->get();
+        return view('social-trading.history', compact("history"));
     }
 }

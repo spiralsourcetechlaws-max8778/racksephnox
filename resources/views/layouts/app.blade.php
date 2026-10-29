@@ -118,7 +118,7 @@
        | PAGE-SPECIFIC HEAD CONTENT
        ═══════════════════════════════════════════════════════════ --}}
     @stack('head')
-    @livewireStyles
+    
 </head>
 <body class="antialiased">
 
@@ -212,7 +212,8 @@
         </div>
     @endif
 
-    @if($errors->any())
+    <?php $errors = $errors ?? new \Illuminate\Support\ViewErrorBag(); ?>
+@if($errors->any())
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
             <div class="bg-red-500/20 border border-red-500/40 rounded-xl p-3 text-red-300 text-sm">
                 <ul class="list-disc list-inside space-y-1">
@@ -285,6 +286,6 @@
     </script>
 
     @stack('scripts')
-    @livewireScripts
+    
 </body>
 </html>

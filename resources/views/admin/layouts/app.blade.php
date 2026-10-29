@@ -5,10 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('page-title', 'Admin') · {{ config('app.name', 'Racksephnox') }}</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @php
+        $manifestExists = file_exists(public_path('build/manifest.json'));
+        $hotExists      = file_exists(public_path('hot'));
+    @endphp
+    @if($manifestExists || $hotExists)
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @else
+        <style>body { background: #0a0a0a; color: #fff; font-family: sans-serif; } .text-gold { color: #D4AF37; } .bg-gray-900 { background: #111; } .bg-gray-950 { background: #000; } .flex { display: flex; } .h-screen { height: 100vh; } .w-64 { width: 16rem; }</style>
+    @endif
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
+<?php $errors = $errors ?? new \Illuminate\Support\ViewErrorBag(); ?>
 <body class="bg-gray-900 text-gray-300 font-sans antialiased" x-data="{ sidebarOpen: false }">
     <div class="flex h-screen overflow-hidden">
 

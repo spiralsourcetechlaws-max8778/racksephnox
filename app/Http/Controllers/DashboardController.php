@@ -120,7 +120,8 @@ class DashboardController extends Controller
         /* ============================================================
          |  NOTIFICATIONS
          ============================================================ */
-        $unreadNotificationsCount = $user->unreadNotifications->count();
+        $unreadNotificationsCount = 0;
+        try { if (\Illuminate\Support\Facades\Schema::hasTable("notifications")) { $unreadNotificationsCount = $user->unreadNotifications->count(); } } catch (\Throwable $e) {}
 
         /* ============================================================
          |  ROI
