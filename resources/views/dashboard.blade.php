@@ -128,30 +128,55 @@ document.addEventListener('DOMContentLoaded', function() {
     const chartDefaults = {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }, x: { grid: { display: false }, ticks: { color: '#9ca3af', maxRotation: 45 } } }
+        scales: { 
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }, 
+            x: { grid: { display: false }, ticks: { color: '#9ca3af', maxRotation: 45 } } 
+        }
     };
 
+    // Profit Chart
     try {
-        new Chart(document.getElementById('profitChart'), {
-            type: 'line',
-            data: {
-                labels: {!! json_encode($profitHistory['labels'] ?? []) !!},
-                datasets: [{ label: 'Profit', data: {!! json_encode($profitHistory['data'] ?? []) !!}, borderColor: goldColor, backgroundColor: 'rgba(212,175,55,0.15)', fill: true, tension: 0.4 }]
-            },
-            options: chartDefaults
-        });
-    } catch(e) { console.error('Profit chart failed', e); }
+        const profitCtx = document.getElementById('profitChart');
+        if (profitCtx) {
+            new Chart(profitCtx, {
+                type: 'line',
+                data: {
+                    labels: @json($profitHistory['labels'] ?? []),
+                    datasets: [{ 
+                        label: 'Daily Profit', 
+                        data: @json($profitHistory['data'] ?? []), 
+                        borderColor: goldColor, 
+                        backgroundColor: 'rgba(212,175,55,0.15)', 
+                        fill: true, 
+                        tension: 0.4 
+                    }]
+                },
+                options: chartDefaults
+            });
+        }
+    } catch(e) { console.error('Profit chart failed:', e); }
 
+    // Portfolio Chart
     try {
-        new Chart(document.getElementById('portfolioChart'), {
-            type: 'doughnut',
-            data: {
-                labels: {!! json_encode($portfolio['labels'] ?? []) !!},
-                datasets: [{ data: {!! json_encode($portfolio['data'] ?? []) !!}, backgroundColor: ['#D4AF37', '#FFD700', '#B8860B', '#8B6914', '#4B3621'] }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } } }
-        });
-    } catch(e) { console.error('Portfolio chart failed', e); }
+        const portfolioCtx = document.getElementById('portfolioChart');
+        if (portfolioCtx) {
+            new Chart(portfolioCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: @json($portfolio['labels'] ?? []),
+                    datasets: [{ 
+                        data: @json($portfolio['data'] ?? []), 
+                        backgroundColor: ['#D4AF37', '#FFD700', '#B8860B', '#8B6914', '#4B3621'] 
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } } 
+                }
+            });
+        }
+    } catch(e) { console.error('Portfolio chart failed:', e); }
 });
 </script>
 @endsection
