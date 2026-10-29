@@ -103,16 +103,16 @@
                 <h3 class="text-sm font-semibold text-gold mb-3">Quick Actions</h3>
                 <div class="grid grid-cols-2 gap-3">
                     <a href="{{ route('machines.index') }}" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg text-center transition">
-                        <i class="fas fa-microchip text-gold mb-1"></i><p class="text-xs text-white">Invest</p>
+                        <i class="fas fa-microchip text-gold mb-1 text-lg"></i><p class="text-xs text-white mt-1">Invest</p>
                     </a>
                     <a href="{{ route('trading.index') }}" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg text-center transition">
-                        <i class="fas fa-chart-line text-gold mb-1"></i><p class="text-xs text-white">Trade</p>
+                        <i class="fas fa-chart-line text-gold mb-1 text-lg"></i><p class="text-xs text-white mt-1">Trade</p>
                     </a>
                     <a href="{{ route('referrals') }}" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg text-center transition">
-                        <i class="fas fa-users text-gold mb-1"></i><p class="text-xs text-white">Referrals</p>
+                        <i class="fas fa-users text-gold mb-1 text-lg"></i><p class="text-xs text-white mt-1">Referrals</p>
                     </a>
                     <a href="{{ route('kyc') }}" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg text-center transition">
-                        <i class="fas fa-id-card text-gold mb-1"></i><p class="text-xs text-white">KYC</p>
+                        <i class="fas fa-id-card text-gold mb-1 text-lg"></i><p class="text-xs text-white mt-1">KYC</p>
                     </a>
                 </div>
             </div>
@@ -128,55 +128,30 @@ document.addEventListener('DOMContentLoaded', function() {
     const chartDefaults = {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { 
-            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }, 
-            x: { grid: { display: false }, ticks: { color: '#9ca3af', maxRotation: 45 } } 
-        }
+        scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }, x: { grid: { display: false }, ticks: { color: '#9ca3af', maxRotation: 45 } } }
     };
 
-    // Profit Chart
     try {
-        const profitCtx = document.getElementById('profitChart');
-        if (profitCtx) {
-            new Chart(profitCtx, {
-                type: 'line',
-                data: {
-                    labels: @json($profitHistory['labels'] ?? []),
-                    datasets: [{ 
-                        label: 'Daily Profit', 
-                        data: @json($profitHistory['data'] ?? []), 
-                        borderColor: goldColor, 
-                        backgroundColor: 'rgba(212,175,55,0.15)', 
-                        fill: true, 
-                        tension: 0.4 
-                    }]
-                },
-                options: chartDefaults
-            });
-        }
-    } catch(e) { console.error('Profit chart failed:', e); }
+        new Chart(document.getElementById('profitChart'), {
+            type: 'line',
+            data: {
+                labels: {!! json_encode($profitHistory['labels'] ?? []) !!},
+                datasets: [{ label: 'Profit', data: {!! json_encode($profitHistory['data'] ?? []) !!}, borderColor: goldColor, backgroundColor: 'rgba(212,175,55,0.15)', fill: true, tension: 0.4 }]
+            },
+            options: chartDefaults
+        });
+    } catch(e) { console.error('Profit chart failed', e); }
 
-    // Portfolio Chart
     try {
-        const portfolioCtx = document.getElementById('portfolioChart');
-        if (portfolioCtx) {
-            new Chart(portfolioCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: @json($portfolio['labels'] ?? []),
-                    datasets: [{ 
-                        data: @json($portfolio['data'] ?? []), 
-                        backgroundColor: ['#D4AF37', '#FFD700', '#B8860B', '#8B6914', '#4B3621'] 
-                    }]
-                },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false, 
-                    plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } } 
-                }
-            });
-        }
-    } catch(e) { console.error('Portfolio chart failed:', e); }
+        new Chart(document.getElementById('portfolioChart'), {
+            type: 'doughnut',
+            data: {
+                labels: {!! json_encode($portfolio['labels'] ?? []) !!},
+                datasets: [{ data: {!! json_encode($portfolio['data'] ?? []) !!}, backgroundColor: ['#D4AF37', '#FFD700', '#B8860B', '#8B6914', '#4B3621'] }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } } }
+        });
+    } catch(e) { console.error('Portfolio chart failed', e); }
 });
 </script>
 @endsection
