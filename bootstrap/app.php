@@ -30,6 +30,19 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
     })
     ->withSchedule(function (Schedule $schedule) {
+        // ─── Scheduler heartbeat ────────────────────────────
+        // Read by MonitoringService::checkScheduler() so the admin
+        // monitoring page can confirm the scheduler is actually alive.
+        // Without this, the check always shows "Idle — Never" even
+        // when schedule:work is running fine.
+        $schedule->call(function () {
+            \Illuminate\Support\Facades\Cache::put(
+                'scheduler.heartbeat',
+                now()->toIso8601String(),
+                3600
+            );
+        })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping();
+
         // ─── Machines ───────────────────────────────────────
         $schedule->command('machine:accrue')->dailyAt('00:10');
 
