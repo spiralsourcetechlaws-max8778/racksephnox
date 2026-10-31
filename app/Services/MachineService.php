@@ -10,13 +10,14 @@ use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class MachineService
 {
-    public const CYCLE_DAYS = 14;
-    public const EARLY_PENALTY = 20;
-    public const REFERRAL_RATE = 5;
+    public const CYCLE_DAYS     = 14;
+    public const EARLY_PENALTY  = 20;
+    public const REFERRAL_RATE  = 5;
 
     public function getActiveMachines()
     {
@@ -44,7 +45,6 @@ class MachineService
 
     /**
      * Execute a machine investment atomically.
-     * Uses Wallet::debit() for balance integrity.
      */
     public function invest(User $user, Machine $machine, int $vipLevel, float $amount): MachineInvestment
     {
@@ -76,10 +76,8 @@ class MachineService
         }
 
         return DB::transaction(function () use ($user, $machine, $vip, $amount, $wallet) {
-            // 1. Debit wallet through the method that enforces balance + transaction record
             $wallet->debit($amount, "Machine investment: {$machine->name} · VIP {$vip->level}", 'machine_investment');
 
-            // 2. Calculate projections
             $days        = (int) ($machine->duration_days ?: self::CYCLE_DAYS);
             $growthRate  = (float) ($vip->growth_rate ?? $machine->growth_rate);
             $totalProfit = round($amount * $growthRate / 100, 2);
@@ -87,17 +85,16 @@ class MachineService
             $startDate   = now();
             $endDate     = $startDate->copy()->addDays($days);
 
-            // 3. Build column payload defensively (some columns may not exist)
-            $cols = \Schema::getColumnListing('machine_investments');
+            $cols = Schema::getColumnListing('machine_investments');
             $payload = [
-                'user_id'      => $user->id,
-                'machine_id'   => $machine->id,
-                'vip_level'    => $vip->level,
-                'amount'       => $amount,
-                'daily_profit' => $dailyProfit,
-                'start_date'   => $startDate,
-                'end_date'     => $endDate,
-                'status'       => 'active',
+                'user_id'         => $user->id,
+                'machine_id'      => $machine->id,
+                'vip_level'       => $vip->level,
+                'amount'          => $amount,
+                'daily_profit'    => $dailyProfit,
+                'start_date'      => $startDate,
+                'end_date'        => $endDate,
+                'status'          => 'active',
                 'profit_credited' => 0,
             ];
 
@@ -111,7 +108,6 @@ class MachineService
 
             $investment = MachineInvestment::create($payload);
 
-            // 4. Update the transaction reference (the debit transaction exists, but reference it)
             Transaction::where('user_id', $user->id)
                 ->where('type', 'machine_investment')
                 ->where('reference', null)
@@ -119,7 +115,6 @@ class MachineService
                 ->limit(1)
                 ->update(['reference' => 'INV-' . $investment->id]);
 
-            // 5. Pay referral bonus if user was referred
             $this->payReferralBonus($user, $amount);
 
             Log::info('Machine investment created', [
@@ -136,14 +131,10 @@ class MachineService
         });
     }
 
-    /**
-     * Credit daily profit to every active investment.
-     * Idempotent per calendar day.
-     */
     public function accrueDailyProfits(): int
     {
         $credited = 0;
-        $cols = \Schema::getColumnListing('machine_investments');
+        $cols = Schema::getColumnListing('machine_investments');
         $accrueCol = in_array('last_accrued_at', $cols) ? 'last_accrued_at'
                    : (in_array('last_profit_date', $cols) ? 'last_profit_date' : null);
 
@@ -260,16 +251,27 @@ class MachineService
         $referrer->wallet->credit($bonus, "Referral bonus from {$user->name}", 'referral_bonus');
     }
 
+    /**
+     * Aggregated user stats for the Machines index page.
+     *
+     * Rewritten to avoid `->clone()` (Eloquent Builder does not expose a
+     * named `clone()` method in vanilla Laravel — only the `__clone` magic
+     * method triggered by `clone $builder`). Also guards the
+     * `total_projected_profit` column so a missing column never 500s.
+     */
     public function getDashboardStats(User $user): array
     {
-        $investments = MachineInvestment::forUser($user->id);
+        $base = MachineInvestment::where('user_id', $user->id);
+        $hasProjected = Schema::hasColumn('machine_investments', 'total_projected_profit');
 
         return [
-            'total_invested'   => (float) $investments->sum('amount'),
-            'total_profit'     => (float) $investments->sum('profit_credited'),
-            'active_count'     => (int) $investments->clone()->active()->count(),
-            'completed_count'  => (int) $investments->clone()->completed()->count(),
-            'projected_profit' => (float) $investments->clone()->active()->sum('total_projected_profit'),
+            'total_invested'   => (float) (clone $base)->sum('amount'),
+            'total_profit'     => (float) (clone $base)->sum('profit_credited'),
+            'active_count'     => (int)   (clone $base)->where('status', 'active')->count(),
+            'completed_count'  => (int)   (clone $base)->where('status', 'completed')->count(),
+            'projected_profit' => $hasProjected
+                ? (float) (clone $base)->where('status', 'active')->sum('total_projected_profit')
+                : 0.0,
         ];
     }
 }

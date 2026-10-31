@@ -6,78 +6,64 @@ use App\Http\Controllers\Controller;
 use App\Models\CryptoPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 class CryptoController extends Controller
 {
-    /**
-     * Get current crypto prices
-     */
     public function prices(Request $request)
     {
-        $prices = Cache::remember('crypto_prices_api', 60, function () {
-            return CryptoPrice::latest()->take(10)->get()->map(function ($price) {
-                return [
-                    'symbol' => $price->symbol,
-                    'name' => $price->name,
-                    'price_kes' => $price->price_kes,
-                    'price_usd' => $price->price_usd,
-                    'percent_change_24h' => $price->percent_change_24h ?? 0,
-                    'last_updated' => $price->last_updated ?? $price->updated_at,
-                ];
-            });
-        });
-        
-        return response()->json([
-            'success' => true,
-            'data' => $prices
-        ]);
+        $prices = [];
+        if (Schema::hasTable('crypto_prices')) {
+            $builder = function () {
+                return CryptoPrice::latest()->take(10)->get()->map(fn ($p) => [
+                    'symbol'             => $p->symbol,
+                    'name'               => $p->name,
+                    'price_kes'          => (float) $p->price_kes,
+                    'price_usd'          => (float) $p->price_usd,
+                    'percent_change_24h' => (float) ($p->percent_change_24h ?? 0),
+                    'last_updated'       => $p->last_updated ?? $p->updated_at,
+                ])->values()->toArray();
+            };
+            try {
+                $prices = Cache::remember('crypto_prices_api', 60, $builder);
+            } catch (\Throwable $e) {
+                try { $prices = $builder(); } catch (\Throwable $e2) { $prices = []; }
+            }
+        }
+        return response()->json(['success' => true, 'data' => $prices, 'prices' => $prices]);
     }
 
-    /**
-     * Get price history for a specific crypto
-     */
     public function history(Request $request, $symbol)
     {
-        $days = $request->get('days', 30);
-        
-        $history = CryptoPrice::where('symbol', $symbol)
-            ->orderBy('created_at', 'desc')
-            ->take($days)
-            ->get()
-            ->map(function ($price) {
-                return [
-                    'price_kes' => $price->price_kes,
-                    'price_usd' => $price->price_usd,
-                    'created_at' => $price->created_at,
-                ];
-            });
-        
-        return response()->json([
-            'success' => true,
-            'symbol' => $symbol,
-            'data' => $history
-        ]);
+        $days = (int) $request->get('days', 30);
+        $history = [];
+        if (Schema::hasTable('crypto_prices')) {
+            try {
+                $history = CryptoPrice::where('symbol', $symbol)
+                    ->orderBy('created_at', 'desc')->take($days)->get()
+                    ->map(fn ($p) => [
+                        'price_kes'  => (float) $p->price_kes,
+                        'price_usd'  => (float) $p->price_usd,
+                        'created_at' => $p->created_at,
+                    ])->values()->toArray();
+            } catch (\Throwable $e) {}
+        }
+        return response()->json(['success' => true, 'symbol' => $symbol, 'data' => $history]);
     }
 
-    /**
-     * Get market overview
-     */
     public function marketData()
     {
-        $prices = CryptoPrice::latest()->take(5)->get();
-        
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'top_cryptos' => $prices->map(function ($price) {
-                    return [
-                        'symbol' => $price->symbol,
-                        'price_kes' => $price->price_kes,
-                        'price_usd' => $price->price_usd,
-                        'change_24h' => $price->percent_change_24h ?? 0,
-                    ];
-                }),
-            ]
-        ]);
+        $top = [];
+        if (Schema::hasTable('crypto_prices')) {
+            try {
+                $top = CryptoPrice::latest()->take(5)->get()->map(fn ($p) => [
+                    'symbol'     => $p->symbol,
+                    'price_kes'  => (float) $p->price_kes,
+                    'price_usd'  => (float) $p->price_usd,
+                    'change_24h' => (float) ($p->percent_change_24h ?? 0),
+                ])->values()->toArray();
+            } catch (\Throwable $e) {}
+        }
+        return response()->json(['success' => true, 'data' => ['top_cryptos' => $top]]);
     }
 }
