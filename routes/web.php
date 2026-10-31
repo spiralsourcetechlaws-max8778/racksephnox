@@ -23,19 +23,28 @@ require __DIR__.'/auth.php';
 require __DIR__.'/admin.php';
 require __DIR__.'/lottery.php';
 
-Route::get('/', function () {
-    return view('welcome');
-})->name('home');
+Route::get('/', fn () => view('welcome'))->name('home');
 
-Route::get('/terms', [LegalPagesController::class, 'terms'])->name('legal.terms');
+Route::get('/terms',   [LegalPagesController::class, 'terms'])->name('legal.terms');
 Route::get('/privacy', [LegalPagesController::class, 'privacy'])->name('legal.privacy');
-Route::get('/guide', [GuideController::class, 'index'])->name('guide');
+Route::get('/guide',   [GuideController::class, 'index'])->name('guide');
 Route::get('/lang/{locale}', [LanguageController::class, 'switch'])->name('lang.switch');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+
+    // ── Dashboard ───────────────────────────────────────────────
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // Profile
+    // ── Dashboard internal AJAX (session-authenticated JSON) ────
+    Route::prefix('dashboard-api')->name('dashboard.api.')->group(function () {
+        Route::get('/wallet-balance',       [DashboardController::class, 'walletBalance'])->name('wallet-balance');
+        Route::get('/notifications-unread', [DashboardController::class, 'notificationsUnread'])->name('notifications-unread');
+        Route::get('/btc-price',            [DashboardController::class, 'btcPrice'])->name('btc-price');
+        Route::get('/lottery-jackpot',      [DashboardController::class, 'lotteryJackpot'])->name('lottery-jackpot');
+        Route::get('/crypto-prices',        [DashboardController::class, 'cryptoPrices'])->name('crypto-prices');
+    });
+
+    // ── Profile ─────────────────────────────────────────────────
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::put('/password', [ProfileController::class, 'updatePassword'])->name('password.update');
@@ -44,23 +53,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/profile/bank-account', [ProfileController::class, 'updateBankAccount'])->name('profile.bank-account.update');
     Route::get('/api/profile-data', [ProfileController::class, 'apiData'])->name('profile.api.data');
 
-    // Investments (legacy)
+    // ── Investments (legacy) ────────────────────────────────────
     Route::get('/investments', [InvestmentController::class, 'index'])->name('investments.index');
     Route::get('/investments/{id}', [InvestmentController::class, 'show'])->name('investments.show');
     Route::post('/investments', [InvestmentController::class, 'redirectToMachines'])->name('investments.store');
 
-    // Wallet
+    // ── Wallet ──────────────────────────────────────────────────
     Route::get('/wallet', [WalletController::class, 'show'])->name('wallet');
 
-    // Transactions
+    // ── Transactions ────────────────────────────────────────────
     Route::get('/transactions', [TransactionController::class, 'index'])->name('transactions.index');
     Route::get('/transactions/export', [TransactionController::class, 'export'])->name('transactions.export');
 
-    // KYC
+    // ── KYC ─────────────────────────────────────────────────────
     Route::get('/kyc', [KycController::class, 'index'])->name('kyc');
     Route::post('/kyc/upload', [KycController::class, 'upload'])->name('kyc.upload');
 
-    // Trading
+    // ── Trading ─────────────────────────────────────────────────
     Route::prefix('trading')->name('trading.')->group(function () {
         Route::get('/', [TradingController::class, 'index'])->name('index');
         Route::get('/price', [TradingController::class, 'price'])->name('price');
@@ -74,7 +83,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/transfer/out', [TradingController::class, 'transferFromTrading'])->name('transfer.out');
     });
 
-    // Social Trading — specific routes BEFORE wildcards
+    // ── Social Trading ──────────────────────────────────────────
     Route::prefix('social-trading')->name('social-trading.')->group(function () {
         Route::get('/leaderboard', [App\Http\Controllers\SocialTradingController::class, 'leaderboard'])->name('leaderboard');
         Route::get('/followed', [App\Http\Controllers\SocialTradingController::class, 'followed'])->name('followed');
@@ -87,18 +96,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/profile/{username}', [App\Http\Controllers\SocialTradingController::class, 'traderProfile'])->name('profile');
     });
 
-    // Referrals
+    // ── Referrals ───────────────────────────────────────────────
     Route::get('/referrals', [ReferralController::class, 'index'])->name('referrals');
 
-    // Deposits
+    // ── Deposits ────────────────────────────────────────────────
     Route::get('/deposit', [DepositController::class, 'form'])->name('deposit.form');
     Route::post('/deposit', [DepositController::class, 'submit'])->name('deposit.submit');
 
-    // Withdrawals
+    // ── Withdrawals ─────────────────────────────────────────────
     Route::get('/withdraw', [WithdrawalController::class, 'form'])->name('withdrawal.form');
     Route::post('/withdraw', [WithdrawalController::class, 'submit'])->name('withdrawal.submit');
 
-    // M-Pesa
+    // ── M-Pesa ──────────────────────────────────────────────────
     Route::prefix('mpesa')->name('mpesa.')->group(function () {
         Route::get('/deposit', [MpesaController::class, 'showDepositForm'])->name('deposit');
         Route::post('/deposit/initiate', [MpesaController::class, 'initiateDeposit'])->name('deposit.initiate');
@@ -106,10 +115,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/withdraw/initiate', [MpesaController::class, 'initiateWithdrawal'])->name('withdraw.initiate');
     });
 
-    // Bank Accounts
+    // ── Bank Accounts ───────────────────────────────────────────
     Route::resource('bank-accounts', BankAccountController::class)->except(['show']);
 
-    // Notifications
+    // ── Notifications ───────────────────────────────────────────
     Route::prefix('notifications')->name('notifications.')->group(function () {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
         Route::post('/mark-all-read', [NotificationController::class, 'markAllRead'])->name('markAllRead');
@@ -120,7 +129,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/preferences', [NotificationController::class, 'updatePreferences'])->name('preferences.update');
     });
 
-    // Loans
+    // ── Loans ───────────────────────────────────────────────────
     Route::prefix('loans')->name('loans.')->group(function () {
         Route::get('/', [App\Http\Controllers\LoanController::class, 'index'])->name('index');
         Route::get('/apply/{product}', [App\Http\Controllers\LoanController::class, 'create'])->name('apply');
@@ -131,7 +140,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{loan}/cancel', [App\Http\Controllers\LoanController::class, 'cancel'])->name('cancel');
     });
 
-    // Machines
+    // ── Machines ────────────────────────────────────────────────
     Route::prefix('machines')->name('machines.')->group(function () {
         Route::get('/', [MachineController::class, 'index'])->name('index');
         Route::get('/my-investments', [MachineController::class, 'myInvestments'])->name('my-investments');

@@ -562,7 +562,7 @@ async function fetchCryptoPrices() {
     if (spinner) spinner.classList.add('animate-spin');
     const list = document.getElementById('cryptoList');
     try {
-        const res = await fetch('/api/v1/crypto/prices');
+        const res = await fetch('/dashboard-api/crypto-prices');
         if (!res.ok) throw new Error('Failed to load');
         const data = await res.json();
         const coins = Array.isArray(data) ? data : (data.data || []);
